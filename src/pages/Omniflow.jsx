@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     MessageCircle, Search, User, Clock, Send, MoreVertical,
-    Phone, Check, CheckDouble, PlusCircle, AlertCircle, FileText
+    Phone, Check, CheckCheck, PlusCircle, AlertCircle, FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Button from '../components/ui/Button';
@@ -89,7 +89,7 @@ const Omniflow = () => {
             setCustomerData(matchedCust);
             // 2. Fetch Tickets for this Customer
             try {
-                const resTickets = await fetch(`/api/tickets`);
+                const resTickets = await fetch(`/ api / tickets`);
                 if (resTickets.ok) {
                     const allTickets = await resTickets.json();
                     if (Array.isArray(allTickets)) {
@@ -170,7 +170,7 @@ const Omniflow = () => {
                 fetchCustomerDetails(selectedChat.name); // Refresh list
                 setActiveTab('tickets'); // Switch view
                 // Optional: Auto send message to customer
-                // handleAutoReply(`Ticket #${res.json().ticket_number} created.`);
+                // handleAutoReply(`Ticket #${ res.json().ticket_number } created.`);
             }
         } catch (err) {
             console.error(err);
@@ -261,7 +261,7 @@ const Omniflow = () => {
                                         <p className="text-gray-800 mb-1">{msg.text}</p>
                                         <div className="flex justify-end items-center gap-1">
                                             <span className="text-[10px] text-gray-500">{msg.time}</span>
-                                            {msg.sender === 'me' && <CheckDouble className="w-3 h-3 text-blue-500" />}
+                                            {msg.sender === 'me' && <CheckCheck className="w-3 h-3 text-blue-500" />}
                                         </div>
                                     </div>
                                 </div>
