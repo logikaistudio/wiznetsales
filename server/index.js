@@ -1,0 +1,513 @@
+import express from 'express';
+import cors from 'cors';
+import db from './db.js';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+dotenv.config({ path: join(__dirname, '../.env') });
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+
+// Health Check
+app.get('/api/health', async (req, res) => {
+    try {
+        const result = await db.query('SELECT NOW()');
+        res.json({ status: 'ok', time: result.rows[0].now, db: 'connected' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database connection failed', details: err.message });
+    }
+});
+
+// Setup Schema Route
+app.get('/api/setup-schema', async (req, res) => {
+    // Just a wrapper to manual setup if needed, but preferred to use script
+    res.json({ message: 'Please run npm run server:setup' });
+});
+
+// ==========================================
+// COVERAGE MANAGEMENT
+// ==========================================
+
+app.get('/api/coverage', async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 100;
+    const offset = (page - 1) * limit;
+    const search = req.query.search || '';
+
+    try {
+        let queryText = 'SELECT * FROM coverage_sites';
+        let countQueryText = 'SELECT COUNT(*) FROM coverage_sites';
+        let queryParams = [];
+
+        if (search) {
+            const searchClause = ` WHERE 
+        site_id ILIKE $1 OR 
+        ampli ILIKE $1 OR 
+        city_town ILIKE $1 OR 
+        cluster_id ILIKE $1`;
+            queryText += searchClause;
+            countQueryText += searchClause;
+            queryParams.push(`%${search}%`);
+        }
+
+        queryText += ` ORDER BY id DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
+
+        const countResult = await db.query(countQueryText, queryParams);
+        const totalRows = parseInt(countResult.rows[0].count);
+
+        const dataResponse = await db.query(queryText, [...queryParams, limit, offset]);
+
+        res.json({
+            data: dataResponse.rows.map(row => ({
+                id: row.id,
+                siteId: row.site_id,
+                ampli: row.ampli,
+                clusterId: row.cluster_id,
+                cityTown: row.city_town,
+                kecamatan: row.kecamatan,
+                kelurahan: row.kelurahan,
+                networkType: row.network_type,
+                fibernode: row.fibernode,
+                fibernodeDesc: row.fibernode_desc,
+                areaLat: parseFloat(row.area_lat),
+                areaLong: parseFloat(row.area_long),
+                ampliLat: parseFloat(row.ampli_lat),
+                ampliLong: parseFloat(row.ampli_long),
+                location: row.location,
+                streetName: row.street_name,
+                streetBlock: row.street_block,
+                streetNo: row.street_no,
+                rtrw: row.rtrw,
+                dwelling: row.dwelling,
+                status: row.status
+            })),
+            pagination: {
+                page,
+                limit,
+                totalRows,
+                totalPages: Math.ceil(totalRows / limit)
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/coverage', async (req, res) => {
+    try {
+        const item = req.body;
+        const query = `
+            INSERT INTO coverage_sites (
+                site_id, ampli, cluster_id, city_town, kecamatan, kelurahan, 
+                network_type, fibernode, fibernode_desc, area_lat, area_long,
+                ampli_lat, ampli_long, location, street_name, street_block, 
+                street_no, rtrw, dwelling, status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            RETURNING id
+        `;
+        const values = [
+            item.siteId, item.ampli, item.clusterId, item.cityTown, item.kecamatan, item.kelurahan,
+            item.networkType, item.fibernode, item.fibernodeDesc, item.areaLat || 0, item.areaLong || 0,
+            item.ampliLat || 0, item.ampliLong || 0, item.location, item.streetName, item.streetBlock,
+            item.streetNo, item.rtrw, item.dwelling, item.status || 'Active'
+        ];
+
+        const result = await db.query(query, values);
+        res.json({ message: 'Site created', id: result.rows[0].id });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/coverage/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const item = req.body;
+        const query = `
+            UPDATE coverage_sites SET
+                site_id=$1, ampli=$2, cluster_id=$3, city_town=$4, kecamatan=$5, kelurahan=$6, 
+                network_type=$7, fibernode=$8, fibernode_desc=$9, area_lat=$10, area_long=$11,
+                ampli_lat=$12, ampli_long=$13, location=$14, street_name=$15, street_block=$16, 
+                street_no=$17, rtrw=$18, dwelling=$19, status=$20
+            WHERE id = $21
+        `;
+        const values = [
+            item.siteId, item.ampli, item.clusterId, item.cityTown, item.kecamatan, item.kelurahan,
+            item.networkType, item.fibernode, item.fibernodeDesc, item.areaLat || 0, item.areaLong || 0,
+            item.ampliLat || 0, item.ampliLong || 0, item.location, item.streetName, item.streetBlock,
+            item.streetNo, item.rtrw, item.dwelling, item.status || 'Active',
+            id
+        ];
+
+        await db.query(query, values);
+        res.json({ message: 'Site updated' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/coverage/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM coverage_sites WHERE id = $1', [id]);
+        res.json({ message: 'Site deleted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/coverage/bulk', async (req, res) => {
+    try {
+        const { data } = req.body;
+        if (!data || !Array.isArray(data)) {
+            throw new Error('Invalid data format');
+        }
+        const query = `
+      INSERT INTO coverage_sites (
+        site_id, ampli, cluster_id, city_town, kecamatan, kelurahan, 
+        network_type, fibernode, fibernode_desc, area_lat, area_long,
+        ampli_lat, ampli_long, location, street_name, street_block, 
+        street_no, rtrw, dwelling, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+    `;
+        let count = 0;
+        for (const item of data) {
+            await db.query(query, [
+                item.siteId, item.ampli, item.clusterId, item.cityTown, item.kecamatan, item.kelurahan,
+                item.networkType, item.fibernode, item.fibernodeDesc, item.areaLat || 0, item.areaLong || 0,
+                item.ampliLat || 0, item.ampliLong || 0, item.location, item.streetName, item.streetBlock,
+                item.streetNo, item.rtrw, item.dwelling, item.status || 'Active'
+            ]);
+            count++;
+        }
+        res.json({ message: `Imported ${count} rows` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// PERSON IN CHARGE
+// ==========================================
+
+app.get('/api/person-incharge', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM person_in_charge ORDER BY id DESC');
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            role: row.role, // Sales, Support
+            employeeId: row.employee_id,
+            email: row.email,
+            phone: row.phone,
+            area: row.area,
+            position: row.position,
+            status: row.status,
+            activeDate: row.active_date,
+            inactiveDate: row.inactive_date,
+            profileImage: row.profile_image
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/person-incharge', async (req, res) => {
+    try {
+        const { name, role, employeeId, email, phone, area, position, status, activeDate, inactiveDate, profileImage } = req.body;
+        const query = `
+      INSERT INTO person_in_charge (name, role, employee_id, email, phone, area, position, status, active_date, inactive_date, profile_image)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id
+    `;
+        const result = await db.query(query, [name, role, employeeId, email, phone, area, position, status || 'Active', activeDate, inactiveDate, profileImage]);
+        res.json({ id: result.rows[0].id, message: 'Created' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/person-incharge/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, role, employeeId, email, phone, area, position, status, activeDate, inactiveDate, profileImage } = req.body;
+        const query = `
+      UPDATE person_in_charge SET 
+      name=$1, role=$2, employee_id=$3, email=$4, phone=$5, area=$6, position=$7, status=$8, active_date=$9, inactive_date=$10, profile_image=$11
+      WHERE id=$12
+    `;
+        await db.query(query, [name, role, employeeId, email, phone, area, position, status, activeDate, inactiveDate, profileImage, id]);
+        res.json({ message: 'Updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/person-incharge/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM person_in_charge WHERE id=$1', [req.params.id]);
+        res.json({ message: 'Deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// ==========================================
+// PRODUCTS
+// ==========================================
+
+app.get('/api/products', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM products ORDER BY id DESC');
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            category: row.category,
+            price: parseFloat(row.price),
+            cogs: parseFloat(row.cogs),
+            bandwidth: row.bandwidth,
+            releaseDate: row.release_date,
+            status: row.status
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/products', async (req, res) => {
+    try {
+        const { name, category, price, cogs, bandwidth, releaseDate, status } = req.body;
+        const query = `
+      INSERT INTO products (name, category, price, cogs, bandwidth, release_date, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+    `;
+        const result = await db.query(query, [name, category, price, cogs, bandwidth, releaseDate, status || 'Active']);
+        res.json({ id: result.rows[0].id, message: 'Created' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, category, price, cogs, bandwidth, releaseDate, status } = req.body;
+        const query = `
+      UPDATE products SET name=$1, category=$2, price=$3, cogs=$4, bandwidth=$5, release_date=$6, status=$7
+      WHERE id=$8
+    `;
+        await db.query(query, [name, category, price, cogs, bandwidth, releaseDate, status, id]);
+        res.json({ message: 'Updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM products WHERE id=$1', [req.params.id]);
+        res.json({ message: 'Deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// ==========================================
+// PROMOS
+// ==========================================
+
+app.get('/api/promos', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM promos ORDER BY id DESC');
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            validFrom: row.valid_from,
+            validTo: row.valid_to,
+            price: parseFloat(row.price),
+            cogs: parseFloat(row.cogs),
+            description: row.description,
+            status: row.status
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/promos', async (req, res) => {
+    try {
+        const { name, validFrom, validTo, price, cogs, description, status } = req.body;
+        const query = `
+      INSERT INTO promos (name, valid_from, valid_to, price, cogs, description, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+    `;
+        const result = await db.query(query, [name, validFrom, validTo, price, cogs, description, status || 'Active']);
+        res.json({ id: result.rows[0].id, message: 'Created' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/promos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, validFrom, validTo, price, cogs, description, status } = req.body;
+        const query = `
+      UPDATE promos SET name=$1, valid_from=$2, valid_to=$3, price=$4, cogs=$5, description=$6, status=$7
+      WHERE id=$8
+    `;
+        await db.query(query, [name, validFrom, validTo, price, cogs, description, status, id]);
+        res.json({ message: 'Updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/promos/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM promos WHERE id=$1', [req.params.id]);
+        res.json({ message: 'Deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// ==========================================
+// TARGETS (Clusters & Cities)
+// ==========================================
+
+app.get('/api/targets', async (req, res) => {
+    try {
+        // Fetch all clusters
+        const clustersRes = await db.query('SELECT * FROM target_clusters ORDER BY name ASC');
+        const clusters = clustersRes.rows;
+
+        // Fetch all cities for these clusters
+        // Efficiently fetch all and map in JS, better than N+1 queries
+        const citiesRes = await db.query('SELECT * FROM target_cities');
+        const cities = citiesRes.rows;
+
+        // Map cities to clusters
+        const result = clusters.map(cluster => ({
+            id: cluster.id,
+            name: cluster.name,
+            totalTarget: cluster.total_target,
+            provinces: [...new Set(cities.filter(c => c.cluster_id === cluster.id).map(c => c.province))], // Extract unique provinces
+            cities: cities
+                .filter(c => c.cluster_id === cluster.id)
+                .map(c => ({
+                    name: c.city_name,
+                    province: c.province,
+                    homepass: c.homepass,
+                    percentage: parseFloat(c.percentage),
+                    target: c.target
+                }))
+        }));
+
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/targets', async (req, res) => {
+    const client = await db.pool.connect(); // We need transaction
+    try {
+        await client.query('BEGIN');
+        const { name, cities } = req.body; // cities = [{name, province, homepass, percentage, target}]
+
+        // 1. Create Cluster
+        const totalTarget = cities.reduce((sum, c) => sum + (parseInt(c.target) || 0), 0);
+        const clusterRes = await client.query(
+            'INSERT INTO target_clusters (name, total_target) VALUES ($1, $2) RETURNING id',
+            [name, totalTarget]
+        );
+        const clusterId = clusterRes.rows[0].id;
+
+        // 2. Create Cities
+        if (cities && cities.length > 0) {
+            for (const city of cities) {
+                await client.query(
+                    `INSERT INTO target_cities (cluster_id, city_name, province, homepass, percentage, target)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [clusterId, city.name, city.province, city.homepass, city.percentage, city.target]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ id: clusterId, message: 'Cluster created' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.put('/api/targets/:id', async (req, res) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { id } = req.params;
+        const { name, cities } = req.body;
+
+        // 1. Update Cluster Name & Total
+        const totalTarget = cities.reduce((sum, c) => sum + (parseInt(c.target) || 0), 0);
+        await client.query(
+            'UPDATE target_clusters SET name=$1, total_target=$2 WHERE id=$3',
+            [name, totalTarget, id]
+        );
+
+        // 2. Sync Cities (Strategy: Delete all old ones, insert new ones. Simplest for this logic)
+        await client.query('DELETE FROM target_cities WHERE cluster_id=$1', [id]);
+
+        if (cities && cities.length > 0) {
+            for (const city of cities) {
+                await client.query(
+                    `INSERT INTO target_cities (cluster_id, city_name, province, homepass, percentage, target)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [id, city.name, city.province, city.homepass, city.percentage, city.target]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ message: 'Cluster updated' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.delete('/api/targets/:id', async (req, res) => {
+    try {
+        // Cascade delete ensures cities are deleted too
+        await db.query('DELETE FROM target_clusters WHERE id=$1', [req.params.id]);
+        res.json({ message: 'Cluster deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
