@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     MessageCircle, Search, User, Clock, Send, MoreVertical,
-    Phone, Check, CheckCheck, PlusCircle, AlertCircle, FileText, Settings, X, Save
+    Phone, Check, CheckCheck, PlusCircle, AlertCircle, FileText, Settings,
+    LayoutDashboard, RefreshCw, Filter, CheckCircle, AlertTriangle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Button from '../components/ui/Button';
@@ -39,6 +40,7 @@ const MOCK_CHATS = [
 
 const Omniflow = () => {
     // Layout State
+    const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'chat'
     const [selectedChat, setSelectedChat] = useState(null);
     const [chats, setChats] = useState(MOCK_CHATS);
     const [inputText, setInputText] = useState('');
@@ -50,6 +52,7 @@ const Omniflow = () => {
     // CRM & Ticket State
     const [customerData, setCustomerData] = useState(null);
     const [customerTickets, setCustomerTickets] = useState([]);
+    const [allTickets, setAllTickets] = useState([]); // For Dashboard Stats
     const [activeTab, setActiveTab] = useState('info'); // info | tickets | create
     const [agents, setAgents] = useState([]);
 
@@ -87,14 +90,26 @@ const Omniflow = () => {
                 const resSettings = await fetch('/api/settings');
                 if (resSettings.ok) setConfig(await resSettings.json());
 
-                // Fetch Customers for manual search cache
+                // Fetch Customers
                 const resCust = await fetch('/api/customers');
                 if (resCust.ok) setCustomers(await resCust.json());
+
+                fetchTickets();
 
             } catch (e) { console.error(e); }
         };
         fetchInit();
     }, []);
+
+    const fetchTickets = async () => {
+        try {
+            const resTickets = await fetch(`/api/tickets`);
+            if (resTickets.ok) {
+                const data = await resTickets.json();
+                if (Array.isArray(data)) setAllTickets(data);
+            }
+        } catch (e) { console.error("Failed to fetch tickets"); }
+    };
 
     // Filter customers logic
     useEffect(() => {
@@ -115,6 +130,7 @@ const Omniflow = () => {
     // When chat selected, fetch customer details
     useEffect(() => {
         if (selectedChat) {
+            setViewMode('chat');
             // Find matched customer
             const matched = customers.find(c => c.name.toLowerCase().includes(selectedChat.name.toLowerCase().split(' ')[0]));
             if (matched) {
@@ -131,18 +147,8 @@ const Omniflow = () => {
 
     const setContextCustomer = async (cust) => {
         setCustomerData(cust);
-        // Fetch Tickets
-        try {
-            const resTickets = await fetch(`/api/tickets`);
-            if (resTickets.ok) {
-                const allTickets = await resTickets.json();
-                if (Array.isArray(allTickets)) {
-                    setCustomerTickets(allTickets.filter(t => t.customer_id === cust.id));
-                }
-            }
-        } catch (e) {
-            setCustomerTickets([]);
-        }
+        const myTickets = allTickets.filter(t => t.customer_id === cust.id);
+        setCustomerTickets(myTickets);
     };
 
     const scrollToBottom = () => {
@@ -202,7 +208,8 @@ const Omniflow = () => {
 
             if (res.ok) {
                 alert("Ticket Created Successfully!");
-                setContextCustomer(customerData); // Refresh list
+                fetchTickets(); // Refresh Global
+                setContextCustomer(customerData); // Refresh Context
                 setActiveTab('tickets');
                 setTicketForm(prev => ({ ...prev, description: '' }));
             }
@@ -227,26 +234,37 @@ const Omniflow = () => {
     };
 
     const handleSelectManualCustomer = (cust) => {
-        // Clear chat selection to focus on CRM mode
         setSelectedChat(null);
+        setViewMode('chat');
         setContextCustomer(cust);
         setIsManualSearchOpen(false);
         setSearchQuery('');
     };
 
+    // --- DASHBOARD STATS CALCULATION ---
+    const stats = {
+        open: allTickets.filter(t => t.status === 'Open').length,
+        progress: allTickets.filter(t => t.status === 'In Progress').length,
+        solved: allTickets.filter(t => t.status === 'Solved').length,
+        today: allTickets.filter(t => new Date(t.created_at).toDateString() === new Date().toDateString()).length
+    };
+
     return (
         <div className="h-[calc(100vh-64px)] flex bg-gray-100 overflow-hidden relative">
 
-            {/* LEFT PANEL: CHAT LIST */}
+            {/* LEFT PANEL: CHAT LIST & NAV */}
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-                <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="font-bold text-gray-800 text-lg">Omniflow</h2>
-                        <div className="flex gap-2">
-                            <Button size="xs" variant="ghost" onClick={() => setIsSettingsOpen(true)} title="WA Settings">
-                                <Settings className="w-4 h-4 text-gray-600" />
-                            </Button>
+                <div className="p-4 border-b border-gray-200 bg-gray-50 space-y-3">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setSelectedChat(null); setViewMode('dashboard'); }}>
+                            <div className="bg-primary/10 p-1.5 rounded">
+                                <LayoutDashboard className="w-5 h-5 text-primary" />
+                            </div>
+                            <h2 className="font-bold text-gray-800 text-lg">Omniflow</h2>
                         </div>
+                        <Button size="xs" variant="ghost" onClick={() => setIsSettingsOpen(true)} title="Settings">
+                            <Settings className="w-4 h-4 text-gray-600" />
+                        </Button>
                     </div>
                     <div className="relative">
                         <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
@@ -259,13 +277,14 @@ const Omniflow = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
+                    <h3 className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Chats</h3>
                     {chats.map(chat => (
                         <div
                             key={chat.id}
                             onClick={() => setSelectedChat(chat)}
                             className={cn(
                                 "p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors",
-                                selectedChat?.id === chat.id && "bg-blue-50 border-blue-100"
+                                selectedChat?.id === chat.id && viewMode === 'chat' && "bg-blue-50 border-blue-100"
                             )}
                         >
                             <div className="flex justify-between mb-1">
@@ -293,84 +312,171 @@ const Omniflow = () => {
                 </div>
             </div>
 
-            {/* MIDDLE PANEL: CHAT ROOM / EMPTY STATE */}
+            {/* MIDDLE AREA: DASHBOARD OR CHAT ROOM */}
             <div className="flex-1 flex flex-col bg-[#e5ddd5] relative">
-                {selectedChat ? (
-                    <>
-                        {/* Chat Header */}
-                        <div className="bg-white p-3 border-b border-gray-200 flex justify-between items-center shadow-sm z-10">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                                    <User className="w-6 h-6" />
+                {viewMode === 'dashboard' ? (
+                    <div className="flex-1 bg-gray-50 overflow-y-auto p-6 md:p-8">
+                        <div className="max-w-4xl mx-auto">
+                            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                                Helpdesk Overview
+                                <Button size="xs" variant="ghost" className="ml-2" onClick={fetchTickets}>
+                                    <RefreshCw className="w-4 h-4 text-gray-500" />
+                                </Button>
+                            </h2>
+
+                            {/* Stats Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-gray-500 font-medium">Open Tickets</p>
+                                        <p className="text-2xl font-bold text-red-600">{stats.open}</p>
+                                    </div>
+                                    <div className="bg-red-50 p-2 rounded-lg">
+                                        <AlertCircle className="w-6 h-6 text-red-500" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-gray-900 leading-tight">{selectedChat.name}</h3>
-                                    <p className="text-xs text-green-600 flex items-center gap-1">
-                                        <Phone className="w-3 h-3" /> {selectedChat.phone}
-                                    </p>
+                                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-gray-500 font-medium">In Progress</p>
+                                        <p className="text-2xl font-bold text-yellow-600">{stats.progress}</p>
+                                    </div>
+                                    <div className="bg-yellow-50 p-2 rounded-lg">
+                                        <Clock className="w-6 h-6 text-yellow-500" />
+                                    </div>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-gray-500 font-medium">Solved Today</p>
+                                        <p className="text-2xl font-bold text-green-600">{stats.solved}</p>
+                                    </div>
+                                    <div className="bg-green-50 p-2 rounded-lg">
+                                        <CheckCircle className="w-6 h-6 text-green-500" />
+                                    </div>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm text-gray-500 font-medium">Total Volume</p>
+                                        <p className="text-2xl font-bold text-blue-600">{stats.today}</p>
+                                    </div>
+                                    <div className="bg-blue-50 p-2 rounded-lg">
+                                        <LayoutDashboard className="w-6 h-6 text-blue-500" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Recent List */}
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                    <h3 className="font-bold text-gray-800">Recent Tickets</h3>
+                                    <Button size="xs" variant="outline">View All</Button>
+                                </div>
+                                <div className="divide-y divide-gray-100">
+                                    {allTickets.length > 0 ? allTickets.slice(0, 5).map(ticket => (
+                                        <div key={ticket.id} className="p-4 hover:bg-gray-50 flex items-center justify-between group cursor-pointer" onClick={() => {
+                                            // Quick navigate logic if connected to chat could go here
+                                        }}>
+                                            <div className="flex items-center gap-4">
+                                                <div className={cn(
+                                                    "w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm",
+                                                    ticket.status === 'Open' ? "bg-red-100 text-red-600" :
+                                                        ticket.status === 'Solved' ? "bg-green-100 text-green-600" : "bg-yellow-100 text-yellow-600"
+                                                )}>
+                                                    {ticket.customer_name ? ticket.customer_name.charAt(0) : '#'}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">{ticket.category} <span className="text-gray-400 font-normal">#{ticket.ticket_number}</span></p>
+                                                    <p className="text-xs text-gray-500">{ticket.customer_name} • {ticket.assigned_name || 'Unassigned'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={cn(
+                                                    "inline-flex px-2 py-1 rounded-full text-[10px] font-bold uppercase mb-1",
+                                                    ticket.status === 'Open' ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600"
+                                                )}>{ticket.status}</span>
+                                                <p className="text-[10px] text-gray-400">{new Date(ticket.created_at).toLocaleTimeString()}</p>
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <div className="p-8 text-center text-gray-400">No tickets found</div>
+                                    )}
                                 </div>
                             </div>
                         </div>
-
-                        {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat">
-                            {selectedChat.messages.map(msg => (
-                                <div key={msg.id} className={cn("flex", msg.sender === 'me' ? "justify-end" : "justify-start")}>
-                                    <div className={cn(
-                                        "max-w-[70%] p-3 rounded-lg shadow-sm text-sm relative",
-                                        msg.sender === 'me' ? "bg-[#d9fdd3] rounded-tr-none" : "bg-white rounded-tl-none"
-                                    )}>
-                                        <p className="text-gray-800 mb-1">{msg.text}</p>
-                                        <div className="flex justify-end items-center gap-1">
-                                            <span className="text-[10px] text-gray-500">{msg.time}</span>
-                                            {msg.sender === 'me' && <CheckCheck className="w-3 h-3 text-blue-500" />}
+                    </div>
+                ) : (
+                    <>
+                        {/* CHAT VIEW - Existing Code */}
+                        {selectedChat || customerData ? (
+                            <>
+                                {/* Chat Header */}
+                                <div className="bg-white p-3 border-b border-gray-200 flex justify-between items-center shadow-sm z-10">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                                            <User className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 leading-tight">
+                                                {selectedChat ? selectedChat.name : customerData?.name}
+                                            </h3>
+                                            <p className="text-xs text-green-600 flex items-center gap-1">
+                                                <Phone className="w-3 h-3" /> {selectedChat ? selectedChat.phone : customerData?.phone}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                            <div ref={messagesEndRef} />
-                        </div>
 
-                        {/* Input Area */}
-                        <div className="p-3 bg-white border-t border-gray-200">
-                            <form onSubmit={handleSendMessage} className="flex gap-2">
-                                <Button type="button" variant="ghost" className="text-gray-500">
-                                    <PlusCircle className="w-6 h-6" />
-                                </Button>
-                                <input
-                                    type="text"
-                                    value={inputText}
-                                    onChange={(e) => setInputText(e.target.value)}
-                                    placeholder="Type a message..."
-                                    className="flex-1 bg-gray-100 border-0 rounded-lg px-4 focus:ring-1 focus:ring-gray-300"
-                                />
-                                <Button type="submit" size="icon" className={cn("rounded-full", !inputText.trim() && "opacity-50")}>
-                                    <Send className="w-5 h-5" />
-                                </Button>
-                            </form>
-                        </div>
-                    </>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500 bg-gray-50">
-                        {customerData ? (
-                            <div className="bg-white p-6 rounded-xl shadow-sm text-center max-w-sm">
-                                <User className="w-16 h-16 text-primary mx-auto mb-4 bg-primary/10 p-3 rounded-full" />
-                                <h3 className="text-lg font-bold text-gray-900 mb-1">{customerData.name}</h3>
-                                <p className="text-sm text-gray-500 mb-4">Manual Context Mode</p>
-                                <div className="text-xs bg-gray-100 p-2 rounded">
-                                    Use the right panel to manage tickets for this customer.
+                                {/* Messages Area */}
+                                {selectedChat ? (
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat">
+                                        {selectedChat.messages.map(msg => (
+                                            <div key={msg.id} className={cn("flex", msg.sender === 'me' ? "justify-end" : "justify-start")}>
+                                                <div className={cn(
+                                                    "max-w-[70%] p-3 rounded-lg shadow-sm text-sm relative",
+                                                    msg.sender === 'me' ? "bg-[#d9fdd3] rounded-tr-none" : "bg-white rounded-tl-none"
+                                                )}>
+                                                    <p className="text-gray-800 mb-1">{msg.text}</p>
+                                                    <div className="flex justify-end items-center gap-1">
+                                                        <span className="text-[10px] text-gray-500">{msg.time}</span>
+                                                        {msg.sender === 'me' && <CheckCheck className="w-3 h-3 text-blue-500" />}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div ref={messagesEndRef} />
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 bg-[#e5ddd5] flex items-center justify-center">
+                                        <div className="bg-white p-4 rounded shadow opacity-80 text-sm text-center">
+                                            Conversation history not available in manual mode
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Input Area */}
+                                <div className="p-3 bg-white border-t border-gray-200">
+                                    <form onSubmit={handleSendMessage} className="flex gap-2">
+                                        <Button type="button" variant="ghost" className="text-gray-500">
+                                            <PlusCircle className="w-6 h-6" />
+                                        </Button>
+                                        <input
+                                            type="text"
+                                            value={inputText}
+                                            onChange={(e) => setInputText(e.target.value)}
+                                            placeholder="Type a message..."
+                                            className="flex-1 bg-gray-100 border-0 rounded-lg px-4 focus:ring-1 focus:ring-gray-300"
+                                            disabled={!selectedChat}
+                                        />
+                                        <Button type="submit" size="icon" className={cn("rounded-full", (!inputText.trim() || !selectedChat) && "opacity-50")} disabled={!selectedChat}>
+                                            <Send className="w-5 h-5" />
+                                        </Button>
+                                    </form>
                                 </div>
-                            </div>
-                        ) : (
-                            <>
-                                <MessageCircle className="w-16 h-16 text-gray-300 mb-4" />
-                                <p className="text-lg font-medium">Select a chat or Search Manual</p>
-                                <Button variant="outline" className="mt-4" onClick={() => setIsManualSearchOpen(true)}>
-                                    <Search className="w-4 h-4 mr-2" /> Manual Customer Search
-                                </Button>
                             </>
+                        ) : (
+                            // This state is actually redundant now because of default Dashboard view, but kept for safety
+                            null
                         )}
-                    </div>
+                    </>
                 )}
             </div>
 
@@ -514,20 +620,30 @@ const Omniflow = () => {
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-gray-500">
-                        {selectedChat ? (
-                            <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 shadow-sm max-w-xs">
-                                <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
-                                <h3 className="font-bold text-gray-800 mb-1">Unlinked Customer</h3>
-                                <p className="text-xs text-gray-600 mb-3">
-                                    Number {selectedChat.phone} not found in database.
-                                </p>
-                                <Button size="sm" variant="outline" className="w-full" onClick={() => setIsManualSearchOpen(true)}>Manual Search</Button>
-                            </div>
-                        ) : (
+                        {/* Dashboard Description on Right Panel when no customer selected */}
+                        {viewMode === 'dashboard' ? (
                             <>
-                                <User className="w-12 h-12 text-gray-200 mb-3" />
-                                <p className="text-sm">Select a chat or use Manual Search to manage tickets.</p>
+                                <LayoutDashboard className="w-12 h-12 text-gray-200 mb-3" />
+                                <h3 className="font-medium text-gray-800">Operational Dashboard</h3>
+                                <p className="text-xs text-gray-500 mt-1">Real-time overview of support performance.</p>
                             </>
+                        ) : (
+                            // Existing Empty State for manual mode etc
+                            selectedChat ? (
+                                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 shadow-sm max-w-xs">
+                                    <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
+                                    <h3 className="font-bold text-gray-800 mb-1">Unlinked Customer</h3>
+                                    <p className="text-xs text-gray-600 mb-3">
+                                        Number {selectedChat.phone} not found in database.
+                                    </p>
+                                    <Button size="sm" variant="outline" className="w-full" onClick={() => setIsManualSearchOpen(true)}>Manual Search</Button>
+                                </div>
+                            ) : (
+                                <>
+                                    <User className="w-12 h-12 text-gray-200 mb-3" />
+                                    <p className="text-sm">Select a chat or use Manual Search to manage tickets.</p>
+                                </>
+                            )
                         )}
                     </div>
                 )}
@@ -556,7 +672,7 @@ const Omniflow = () => {
                         onChange={e => setConfig({ ...config, wa_device_id: e.target.value })}
                     />
                     <div className="flex justify-end pt-4">
-                        <Button type="submit"><Save className="w-4 h-4 mr-2" /> Save Configuration</Button>
+                        <Button type="submit"><Settings className="w-4 h-4 mr-2" /> Save Configuration</Button>
                     </div>
                 </form>
             </Modal>
