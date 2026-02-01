@@ -165,25 +165,60 @@ const Prospect = () => {
     };
 
     // EXPORT IMPORT LOGIC
+
+    // Field Mapping Configuration
+    const FIELD_MAP = [
+        { header: 'Customer ID', key: 'customerId', width: 20 },
+        { header: 'Full Name', key: 'name', width: 25 },
+        { header: 'Phone (WA)', key: 'phone', width: 15 },
+        { header: 'Email', key: 'email', width: 25 },
+        { header: 'Address', key: 'address', width: 40 },
+        { header: 'Latitude', key: 'latitude', width: 15 },
+        { header: 'Longitude', key: 'longitude', width: 15 },
+        { header: 'Cluster/Area', key: 'area', width: 20 },
+        { header: 'Kabupaten/City', key: 'kabupaten', width: 20 },
+        { header: 'Kecamatan', key: 'kecamatan', width: 20 },
+        { header: 'Kelurahan', key: 'kelurahan', width: 20 },
+        { header: 'Product', key: 'productName', width: 25 },
+        { header: 'Sales Person', key: 'salesName', width: 20 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Prospect Date', key: 'prospectDate', width: 15 }
+    ];
+
     const handleExport = () => {
-        const worksheet = XLSX.utils.json_to_sheet(customers.map(c => ({
-            "Customer ID": c.customerId,
-            "Name": c.name,
-            "Address": c.address,
-            "Area": c.area,
-            "City": c.kabupaten,
-            "District": c.kecamatan,
-            "Village": c.kelurahan,
-            "Phone": c.phone,
-            "Product": c.productName,
-            "Status": c.status,
-            "Latitude": c.latitude,
-            "Longitude": c.longitude,
-            "Sales": c.salesName
-        })));
+        // 1. Format Data
+        const dataToExport = customers.map(c => {
+            const row = {};
+            FIELD_MAP.forEach(field => {
+                row[field.header] = c[field.key] || '';
+            });
+            return row;
+        });
+
+        // 2. Create Sheet
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+        // 3. Style Header (Attempt) - Note: Community version might ignore this
+        // Set column widths
+        worksheet['!cols'] = FIELD_MAP.map(f => ({ wch: f.width }));
+
+        // Apply basic styles loop (if supported)
+        const range = XLSX.utils.decode_range(worksheet['!ref']);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (!worksheet[address]) continue;
+            worksheet[address].s = {
+                fill: { fgColor: { rgb: "E1F5FE" } }, // Light Blue
+                font: { name: "Arial", sz: 12, bold: true, color: { rgb: "000000" } },
+                alignment: { horizontal: "center" },
+                border: { bottom: { style: "thin", color: { auto: 1 } } }
+            };
+        }
+
+        // 4. Write File
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Prospects");
-        XLSX.writeFile(workbook, `Prospects_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Prospects Data");
+        XLSX.writeFile(workbook, `Prospects_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
     const handleFileSelect = (e) => {
@@ -191,26 +226,36 @@ const Prospect = () => {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (evt) => {
-            const wb = XLSX.read(evt.target.result, { type: 'binary' });
-            const jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            // Map common excel headers to our schema (Simple mapping for now)
-            const mapped = jsonData.map(row => ({
-                customerId: row['Customer ID'],
-                name: row['Name'],
-                address: row['Address'],
-                area: row['Area'],
-                kabupaten: row['City'] || row['Kabupaten'],
-                kecamatan: row['District'] || row['Kecamatan'],
-                kelurahan: row['Village'] || row['Kelurahan'],
-                phone: String(row['Phone'] || ''),
-                productName: row['Product'],
-                status: row['Status'] || 'Prospect',
-                latitude: row['Latitude'],
-                longitude: row['Longitude'],
-                salesName: row['Sales']
-            }));
-            setImportPreview(mapped);
-            setIsImportModalOpen(true);
+            try {
+                const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                const jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+                // Map back from Headers to Keys
+                const mapped = jsonData.map(row => {
+                    const obj = {};
+                    FIELD_MAP.forEach(field => {
+                        // Find value by Header Name or close match
+                        const val = row[field.header];
+                        if (val !== undefined) obj[field.key] = val;
+                    });
+
+                    // Defaults / Fallbacks
+                    if (!obj.status) obj.status = 'Prospect';
+                    if (!obj.type) obj.type = 'Broadband Home';
+                    // Parse Numbers
+                    if (obj.latitude) obj.latitude = parseFloat(obj.latitude);
+                    if (obj.longitude) obj.longitude = parseFloat(obj.longitude);
+                    // Stringify Phone
+                    if (obj.phone) obj.phone = String(obj.phone);
+
+                    return obj;
+                });
+
+                setImportPreview(mapped);
+                setIsImportModalOpen(true);
+            } catch (err) {
+                alert("Failed to parse Excel: " + err.message);
+            }
         };
         reader.readAsBinaryString(file);
         e.target.value = '';
