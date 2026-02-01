@@ -79,6 +79,10 @@ const Coverage = () => {
     const [isPickingLocation, setIsPickingLocation] = useState(false);
     const [manualCheckPoint, setManualCheckPoint] = useState(null);
 
+    // Manual Input State
+    const [manualInput, setManualInput] = useState({ lat: '', lng: '' });
+    const [showInputForm, setShowInputForm] = useState(false);
+
     // Fetch Data
     useEffect(() => {
         const loadData = async () => {
@@ -179,6 +183,21 @@ const Coverage = () => {
         setIsPickingLocation(false); // Disable picking after click
     };
 
+    const handleManualSubmit = (e) => {
+        e.preventDefault();
+        const lat = parseFloat(manualInput.lat);
+        const lng = parseFloat(manualInput.lng);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert("Please enter valid decimal coordinates");
+            return;
+        }
+
+        handleMapClick({ lat, lng });
+        setManualInput({ lat: '', lng: '' });
+        setShowInputForm(false);
+    };
+
     const mapCenter = useMemo(() => {
         if (manualCheckPoint) return [manualCheckPoint.lat, manualCheckPoint.lng];
         if (analyzedCustomers.length > 0) return [analyzedCustomers[0].lat, analyzedCustomers[0].lng];
@@ -189,7 +208,7 @@ const Coverage = () => {
     return (
         <div className="h-[calc(100vh-64px)] flex flex-col relative">
             {/* Header Overlay */}
-            <div className="absolute top-4 left-4 z-[400] bg-white p-4 rounded-xl shadow-lg border border-gray-100 max-w-sm">
+            <div className="absolute top-4 left-4 z-[400] bg-white p-4 rounded-xl shadow-lg border border-gray-100 max-w-sm w-full">
                 <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                     <MapIcon className="w-5 h-5 text-primary" /> Coverage Check
                 </h1>
@@ -197,22 +216,70 @@ const Coverage = () => {
                     Visualizing customer locations ({CONSTANTS.COVERAGE_RADIUS_METERS}m radius).
                 </p>
 
-                {/* Manual Check Tool */}
-                <div className="mt-4 mb-4 border-t pt-4 border-gray-100">
-                    <p className="text-xs font-semibold text-gray-700 mb-2">Check New Location</p>
-                    <Button
-                        size="sm"
-                        variant={isPickingLocation ? 'primary' : 'outline'}
-                        className={cn("w-full justify-center", isPickingLocation && "ring-2 ring-offset-1 ring-primary")}
-                        onClick={() => {
-                            setIsPickingLocation(!isPickingLocation);
-                            setManualCheckPoint(null);
-                        }}
-                    >
-                        {isPickingLocation ? 'Click on Map (Picking...)' : '📍 Pick Point on Map'}
-                    </Button>
-                    {isPickingLocation && <p className="text-[10px] text-gray-500 mt-1 text-center animate-pulse">Click anywhere on the map to check coverage.</p>}
+                {/* Manual Check Tools */}
+                <div className="mt-3 space-y-2 border-t pt-3 border-gray-100">
+                    <p className="text-xs font-semibold text-gray-700">Check Location Coverage</p>
+
+                    <div className="flex gap-2">
+                        <Button
+                            size="sm"
+                            variant={isPickingLocation ? 'primary' : 'outline'}
+                            className={cn("flex-1 justify-center text-xs", isPickingLocation && "ring-2 ring-primary")}
+                            onClick={() => {
+                                setIsPickingLocation(!isPickingLocation);
+                                setShowInputForm(false);
+                                setManualCheckPoint(null);
+                            }}
+                        >
+                            📍 Pick on Map
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={showInputForm ? 'primary' : 'outline'}
+                            className="flex-1 justify-center text-xs"
+                            onClick={() => {
+                                setShowInputForm(!showInputForm);
+                                setIsPickingLocation(false);
+                            }}
+                        >
+                            ⌨️ Input Lat/Long
+                        </Button>
+                    </div>
+
+                    {/* Manual Input Form */}
+                    {showInputForm && (
+                        <form onSubmit={handleManualSubmit} className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2 mt-2">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-gray-500">Latitude</label>
+                                    <input
+                                        type="number" step="any"
+                                        className="w-full text-xs p-1.5 border rounded"
+                                        value={manualInput.lat}
+                                        onChange={e => setManualInput({ ...manualInput, lat: e.target.value })}
+                                        placeholder="-6.2..."
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-gray-500">Longitude</label>
+                                    <input
+                                        type="number" step="any"
+                                        className="w-full text-xs p-1.5 border rounded"
+                                        value={manualInput.lng}
+                                        onChange={e => setManualInput({ ...manualInput, lng: e.target.value })}
+                                        placeholder="106.8..."
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <Button type="submit" size="sm" className="w-full">Check Coordinates</Button>
+                        </form>
+                    )}
+
+                    {isPickingLocation && <p className="text-[10px] text-gray-500 text-center animate-pulse">Click anywhere on the map...</p>}
                 </div>
+
 
                 {/* Manual Check Result */}
                 {manualCheckPoint && (

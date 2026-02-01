@@ -209,6 +209,64 @@ app.post('/api/coverage/bulk', async (req, res) => {
     }
 });
 
+app.get('/api/coverage/check-point', async (req, res) => {
+    try {
+        const lat = parseFloat(req.query.lat);
+        const long = parseFloat(req.query.long);
+
+        if (isNaN(lat) || isNaN(long)) {
+            return res.status(400).json({ error: 'Invalid lat/long parameters' });
+        }
+
+        // Haversine formula in SQL (Distance in Meters)
+        // 6371000 meters earth radius
+        const query = `
+            SELECT 
+                site_id, ampli, network_type,
+                ampli_lat, ampli_long,
+                (
+                    6371000 * acos(
+                        least(1.0, greatest(-1.0, 
+                            cos(radians($1)) * cos(radians(ampli_lat)) * 
+                            cos(radians(ampli_long) - radians($2)) + 
+                            sin(radians($1)) * sin(radians(ampli_lat))
+                        ))
+                    )
+                ) AS distance
+            FROM coverage_sites
+            WHERE ampli_lat IS NOT NULL AND ampli_long IS NOT NULL
+            ORDER BY distance ASC
+            LIMIT 1
+        `;
+
+        const result = await db.query(query, [lat, long]);
+
+        if (result.rows.length > 0) {
+            const nearest = result.rows[0];
+            const distance = Math.round(nearest.distance); // meters
+            const isCovered = distance <= 250; // 250m threshold
+
+            res.json({
+                covered: isCovered,
+                distance: distance,
+                nearestNode: {
+                    site_id: nearest.site_id,
+                    ampli: nearest.ampli,
+                    network: nearest.network_type,
+                    lat: nearest.ampli_lat,
+                    long: nearest.ampli_long
+                }
+            });
+        } else {
+            res.json({ covered: false, distance: -1, message: 'No coverage data available' });
+        }
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ==========================================
 // PERSON IN CHARGE
 // ==========================================
