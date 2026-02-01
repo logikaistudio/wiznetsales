@@ -618,6 +618,135 @@ app.delete('/api/customers/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// HOT NEWS
+// ==========================================
+
+app.get('/api/hotnews', async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT * FROM hot_news 
+            WHERE is_active = true 
+            AND start_date <= NOW() 
+            AND end_date >= NOW()
+            ORDER BY priority DESC, created_at DESC
+        `);
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            title: row.title,
+            content: row.content,
+            priority: row.priority,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            isActive: row.is_active,
+            createdBy: row.created_by,
+            createdAt: row.created_at
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/hotnews/all', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM hot_news ORDER BY created_at DESC');
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            title: row.title,
+            content: row.content,
+            priority: row.priority,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            isActive: row.is_active,
+            createdBy: row.created_by,
+            createdAt: row.created_at
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/hotnews', async (req, res) => {
+    try {
+        const { title, content, priority, startDate, endDate, isActive, createdBy } = req.body;
+        const result = await db.query(
+            `INSERT INTO hot_news (title, content, priority, start_date, end_date, is_active, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [title, content, priority || 1, startDate, endDate, isActive !== false, createdBy || 'Admin']
+        );
+        res.json({ message: 'Hot news created', id: result.rows[0].id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/hotnews/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, content, priority, startDate, endDate, isActive } = req.body;
+        await db.query(
+            `UPDATE hot_news SET title=$1, content=$2, priority=$3, start_date=$4, end_date=$5, is_active=$6, updated_at=NOW()
+             WHERE id=$7`,
+            [title, content, priority, startDate, endDate, isActive, id]
+        );
+        res.json({ message: 'Hot news updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/hotnews/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM hot_news WHERE id = $1', [req.params.id]);
+        res.json({ message: 'Hot news deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// DASHBOARD STATS
+// ==========================================
+
+app.get('/api/dashboard/stats', async (req, res) => {
+    try {
+        // Total Active Homepass
+        const activeHomepass = await db.query(
+            `SELECT COUNT(*) as count FROM customers WHERE is_active = true AND status IN ('Billing', 'Installation')`
+        );
+
+        // Total Cities (unique kabupaten from customers)
+        const totalCities = await db.query(
+            `SELECT COUNT(DISTINCT kabupaten) as count FROM customers WHERE kabupaten IS NOT NULL AND kabupaten != ''`
+        );
+
+        // Total Achievement (sum of all targets achieved - simplified)
+        const achievement = await db.query(
+            `SELECT COALESCE(SUM(total_target), 0) as total FROM target_clusters`
+        );
+
+        // Monthly sales data for chart (Jan-Dec)
+        const monthlySales = await db.query(`
+            SELECT 
+                EXTRACT(MONTH FROM prospect_date) as month,
+                COUNT(*) as count
+            FROM customers
+            WHERE EXTRACT(YEAR FROM prospect_date) = EXTRACT(YEAR FROM NOW())
+            GROUP BY EXTRACT(MONTH FROM prospect_date)
+            ORDER BY month
+        `);
+
+        res.json({
+            activeHomepass: parseInt(activeHomepass.rows[0].count),
+            totalCities: parseInt(totalCities.rows[0].count),
+            achievement: parseInt(achievement.rows[0].total),
+            monthlySales: monthlySales.rows
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
