@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
 import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -44,8 +44,28 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 const CONSTANTS = {
-    COVERAGE_RADIUS_METERS: 300, // Distance to consider "Covered"
+    COVERAGE_RADIUS_METERS: 250, // Updated to 250m
     DEFAULT_CENTER: [-6.2088, 106.8456] // Jakarta
+};
+
+// Component for Map Events (Click Handling)
+const MapEvents = ({ onMapClick, isPicking }) => {
+    const map = useMapEvents({
+        click(e) {
+            if (isPicking) {
+                onMapClick(e.latlng);
+            }
+        },
+    });
+    // Change cursor
+    useEffect(() => {
+        if (isPicking) {
+            map.getContainer().style.cursor = 'crosshair';
+        } else {
+            map.getContainer().style.cursor = 'grab';
+        }
+    }, [isPicking, map]);
+    return null;
 };
 
 const Coverage = () => {
@@ -55,15 +75,17 @@ const Coverage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState({ covered: 0, uncovered: 0, total: 0 });
 
+    // Manual Check State
+    const [isPickingLocation, setIsPickingLocation] = useState(false);
+    const [manualCheckPoint, setManualCheckPoint] = useState(null);
+
     // Fetch Data
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
                 // Fetch Coverage Points
-                // Note: Fetching all might be heavy. Ideally backend should do bounds query.
-                // For demo/prototype, we fetch max 1000 or implement pagination loop if needed.
-                const resCov = await fetch('/api/coverage?limit=1000');
+                const resCov = await fetch('/api/coverage?limit=2000');
                 const jsonCov = await resCov.json();
                 const points = jsonCov.data || [];
                 setCoveragePoints(points);
@@ -86,15 +108,9 @@ const Coverage = () => {
     useEffect(() => {
         if (coveragePoints.length === 0 || customers.length === 0) return;
 
-        // Simple Nearest Neighbor Analysis
-        // Warning: O(N*M) complexity. If data > 1000, this will freeze UI.
-        // Optimization: In real app, use spatial index (RBush/Quadtree).
-
         let coveredCount = 0;
 
         const analyzed = customers.map(cust => {
-            // Parse Lat/Long from customer data if available (Assuming key names)
-            // If customer has no coords, we skip map render or try to geocode (omitted for now)
             const lat = parseFloat(cust.latitude || cust.lat);
             const lng = parseFloat(cust.longitude || cust.long || cust.lng);
 
@@ -105,7 +121,6 @@ const Coverage = () => {
             let nearestPoint = null;
 
             for (const point of coveragePoints) {
-                // Use ampliLat/ampliLong
                 const d = getDistance(lat, lng, point.ampliLat, point.ampliLong);
                 if (d < minDist) {
                     minDist = d;
@@ -136,11 +151,40 @@ const Coverage = () => {
 
     }, [coveragePoints, customers]);
 
+    const handleMapClick = (latlng) => {
+        const lat = latlng.lat;
+        const lng = latlng.lng;
+
+        // Find nearest point Logic
+        let minDist = Infinity;
+        let nearestPoint = null;
+
+        for (const point of coveragePoints) {
+            const d = getDistance(lat, lng, point.ampliLat, point.ampliLong);
+            if (d < minDist) {
+                minDist = d;
+                nearestPoint = point;
+            }
+        }
+
+        const isCovered = minDist <= CONSTANTS.COVERAGE_RADIUS_METERS;
+
+        setManualCheckPoint({
+            lat,
+            lng,
+            coverageStatus: isCovered ? 'Covered' : 'Uncovered',
+            nearestDistance: minDist,
+            nearestPoint
+        });
+        setIsPickingLocation(false); // Disable picking after click
+    };
+
     const mapCenter = useMemo(() => {
+        if (manualCheckPoint) return [manualCheckPoint.lat, manualCheckPoint.lng];
         if (analyzedCustomers.length > 0) return [analyzedCustomers[0].lat, analyzedCustomers[0].lng];
         if (coveragePoints.length > 0 && coveragePoints[0].ampliLat) return [coveragePoints[0].ampliLat, coveragePoints[0].ampliLong];
         return CONSTANTS.DEFAULT_CENTER;
-    }, [analyzedCustomers, coveragePoints]);
+    }, [analyzedCustomers, coveragePoints, manualCheckPoint]);
 
     return (
         <div className="h-[calc(100vh-64px)] flex flex-col relative">
@@ -150,24 +194,62 @@ const Coverage = () => {
                     <MapIcon className="w-5 h-5 text-primary" /> Coverage Check
                 </h1>
                 <p className="text-xs text-gray-500 mb-3">
-                    Visualizing customer locations against network coverage points ({CONSTANTS.COVERAGE_RADIUS_METERS}m radius).
+                    Visualizing customer locations ({CONSTANTS.COVERAGE_RADIUS_METERS}m radius).
                 </p>
 
-                {isLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Loader2 className="w-4 h-4 animate-spin" /> Analyzing geospatial data...
+                {/* Manual Check Tool */}
+                <div className="mt-4 mb-4 border-t pt-4 border-gray-100">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">Check New Location</p>
+                    <Button
+                        size="sm"
+                        variant={isPickingLocation ? 'primary' : 'outline'}
+                        className={cn("w-full justify-center", isPickingLocation && "ring-2 ring-offset-1 ring-primary")}
+                        onClick={() => {
+                            setIsPickingLocation(!isPickingLocation);
+                            setManualCheckPoint(null);
+                        }}
+                    >
+                        {isPickingLocation ? 'Click on Map (Picking...)' : '📍 Pick Point on Map'}
+                    </Button>
+                    {isPickingLocation && <p className="text-[10px] text-gray-500 mt-1 text-center animate-pulse">Click anywhere on the map to check coverage.</p>}
+                </div>
+
+                {/* Manual Check Result */}
+                {manualCheckPoint && (
+                    <div className={cn(
+                        "mt-2 p-3 rounded-lg border flex flex-col items-center text-center animate-in fade-in zoom-in duration-300",
+                        manualCheckPoint.coverageStatus === 'Covered' ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+                    )}>
+                        {manualCheckPoint.coverageStatus === 'Covered' ? (
+                            <CheckCircle className="w-8 h-8 text-green-600 mb-1" />
+                        ) : (
+                            <XCircle className="w-8 h-8 text-red-600 mb-1" />
+                        )}
+                        <h3 className={cn("font-bold text-lg", manualCheckPoint.coverageStatus === 'Covered' ? "text-green-700" : "text-red-700")}>
+                            {manualCheckPoint.coverageStatus}
+                        </h3>
+                        <p className="text-xs text-gray-600 mt-1">
+                            Distance to Node: <strong>{Math.round(manualCheckPoint.nearestDistance)} m</strong>
+                        </p>
                     </div>
-                ) : (
-                    <div className="grid grid-cols-2 gap-2 text-center">
+                )}
+
+                {/* Stats */}
+                {!manualCheckPoint && !isLoading && (
+                    <div className="grid grid-cols-2 gap-2 text-center border-t pt-4 mt-2">
                         <div className="bg-green-50 p-2 rounded-lg border border-green-100">
                             <p className="text-lg font-bold text-green-600">{stats.covered}</p>
-                            <p className="text-[10px] uppercase font-bold text-green-500">In Coverage</p>
+                            <p className="text-[10px] uppercase font-bold text-green-500">Existing Covered</p>
                         </div>
                         <div className="bg-red-50 p-2 rounded-lg border border-red-100">
                             <p className="text-lg font-bold text-red-600">{stats.uncovered}</p>
                             <p className="text-[10px] uppercase font-bold text-red-500">Uncovered</p>
                         </div>
                     </div>
+                )}
+
+                {isLoading && (
+                    <div className="text-center py-4 text-xs text-gray-500">Loading map data...</div>
                 )}
             </div>
 
@@ -178,6 +260,28 @@ const Coverage = () => {
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
+
+                    {/* Handle Map Click */}
+                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} />
+
+                    {/* Render Manual Check Marker */}
+                    {manualCheckPoint && (
+                        <Marker
+                            position={[manualCheckPoint.lat, manualCheckPoint.lng]}
+                            icon={customerIcon(manualCheckPoint.coverageStatus)}
+                        >
+                            <Popup offset={[0, -10]}>
+                                <div className="text-center p-1">
+                                    <p className="font-bold text-sm">Checked Location</p>
+                                    <p className={cn(
+                                        "text-xs font-bold uppercase mb-1",
+                                        manualCheckPoint.coverageStatus === 'Covered' ? "text-green-600" : "text-red-600"
+                                    )}>{manualCheckPoint.coverageStatus}</p>
+                                    <p className="text-xs text-gray-500">{manualCheckPoint.lat.toFixed(5)}, {manualCheckPoint.lng.toFixed(5)}</p>
+                                </div>
+                            </Popup>
+                        </Marker>
+                    )}
 
                     {/* Render Coverage Points (Network Nodes) */}
                     {coveragePoints.filter(p => p.ampliLat).map((point, idx) => (
@@ -245,15 +349,15 @@ const Coverage = () => {
             <div className="absolute bottom-6 right-6 z-[400] bg-white p-3 rounded-lg shadow-md border border-gray-200 text-xs">
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
-                    <span>Customer Covered</span>
+                    <span>Covered</span>
                 </div>
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
-                    <span>Out of Coverage</span>
+                    <span>Uncovered</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-sky-500 border-2 border-white shadow-sm"></div>
-                    <span>Network Node</span>
+                    <span>Node (250m)</span>
                 </div>
             </div>
         </div>
