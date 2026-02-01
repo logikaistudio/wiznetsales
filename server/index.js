@@ -850,19 +850,23 @@ const generateTicketNumber = async () => {
     return `${prefix}-${String(sequence).padStart(3, '0')}`;
 };
 
-// Get all tickets
+// Get all tickets with Customer Phone
 app.get('/api/tickets', async (req, res) => {
     try {
         const { status } = req.query;
-        let query = 'SELECT * FROM tickets';
+        let query = `
+            SELECT t.*, c.phone as customer_phone 
+            FROM tickets t
+            LEFT JOIN customers c ON t.customer_id = c.id
+        `;
         const params = [];
 
         if (status && status !== 'All') {
-            query += ' WHERE status = $1';
+            query += ' WHERE t.status = $1';
             params.push(status);
         }
 
-        query += ' ORDER BY created_at DESC';
+        query += ' ORDER BY t.created_at DESC';
 
         const result = await db.query(query, params);
         res.json(result.rows);
@@ -891,6 +895,13 @@ app.post('/api/tickets', async (req, res) => {
         ];
 
         const result = await db.query(query, values);
+
+        // Auto-create initial activity
+        await db.query(`
+            INSERT INTO ticket_activities (ticket_id, activity_type, content, created_by)
+            VALUES ($1, 'status_change', 'Ticket created', 'System')
+        `, [result.rows[0].id]);
+
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -902,7 +913,7 @@ app.post('/api/tickets', async (req, res) => {
 app.put('/api/tickets/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, assignedTo, assignedName } = req.body;
+        const { status, assignedTo, assignedName, updatedBy } = req.body;
 
         let query = 'UPDATE tickets SET status = $1, updated_at = NOW()';
         const values = [status];
@@ -920,8 +931,46 @@ app.put('/api/tickets/:id', async (req, res) => {
         query += ` WHERE id = $${idx}`;
         values.push(id);
 
-        const result = await db.query(query, values);
+        await db.query(query, values);
+
+        // Log activity
+        let logMsg = `Status updated to ${status}`;
+        if (assignedName) logMsg += ` & Assigned to ${assignedName}`;
+
+        await db.query(`
+            INSERT INTO ticket_activities (ticket_id, activity_type, content, created_by)
+            VALUES ($1, 'status_change', $2, $3)
+        `, [id, logMsg, updatedBy || 'System']);
+
         res.json({ message: 'Ticket updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get Ticket Activities
+app.get('/api/tickets/:id/activities', async (req, res) => {
+    try {
+        const result = await db.query(`SELECT * FROM ticket_activities WHERE ticket_id = $1 ORDER BY created_at ASC`, [req.params.id]);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Add Ticket Activity
+app.post('/api/tickets/:id/activities', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { activityType, content, createdBy } = req.body;
+
+        const result = await db.query(`
+            INSERT INTO ticket_activities (ticket_id, activity_type, content, created_by)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `, [id, activityType || 'note', content, createdBy || 'System']);
+
+        res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
