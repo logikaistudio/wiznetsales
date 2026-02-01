@@ -756,6 +756,78 @@ app.get('/api/dashboard/stats', async (req, res) => {
     }
 });
 
+// ==========================================
+// ACHIEVEMENT DATA
+// ==========================================
+
+app.get('/api/achievement', async (req, res) => {
+    try {
+        // Achievement by City
+        const cityAchievement = await db.query(`
+            SELECT 
+                tc.city_name,
+                tc.province,
+                tc.target,
+                COUNT(CASE WHEN c.is_active = true THEN 1 END) as actual,
+                ROUND((COUNT(CASE WHEN c.is_active = true THEN 1 END)::numeric / NULLIF(tc.target, 0)) * 100, 2) as percentage
+            FROM target_cities tc
+            LEFT JOIN customers c ON c.kabupaten = tc.city_name AND c.is_active = true
+            GROUP BY tc.id, tc.city_name, tc.province, tc.target
+            ORDER BY percentage DESC
+        `);
+
+        // Achievement by Sales Person
+        const salesAchievement = await db.query(`
+            SELECT 
+                p.id,
+                p.name,
+                p.area,
+                COUNT(c.id) as actual,
+                0 as target,
+                0 as percentage
+            FROM person_incharge p
+            LEFT JOIN customers c ON c.sales_id = p.id AND c.is_active = true
+            WHERE p.role = 'Sales'
+            GROUP BY p.id, p.name, p.area
+            ORDER BY actual DESC
+        `);
+
+        // Total Summary
+        const totalTarget = await db.query(`SELECT COALESCE(SUM(target), 0) as total FROM target_cities`);
+        const totalActual = await db.query(`SELECT COUNT(*) as total FROM customers WHERE is_active = true`);
+
+        const target = parseInt(totalTarget.rows[0].total);
+        const actual = parseInt(totalActual.rows[0].total);
+        const percentage = target > 0 ? ((actual / target) * 100).toFixed(2) : 0;
+
+        res.json({
+            summary: {
+                totalTarget: target,
+                totalActual: actual,
+                percentage: parseFloat(percentage)
+            },
+            byCity: cityAchievement.rows.map(row => ({
+                cityName: row.city_name,
+                province: row.province,
+                target: parseInt(row.target),
+                actual: parseInt(row.actual),
+                percentage: parseFloat(row.percentage || 0)
+            })),
+            bySales: salesAchievement.rows.map(row => ({
+                id: row.id,
+                name: row.name,
+                area: row.area,
+                actual: parseInt(row.actual),
+                target: parseInt(row.target),
+                percentage: parseFloat(row.percentage || 0)
+            }))
+        });
+    } catch (err) {
+        console.error('Achievement error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
