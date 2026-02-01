@@ -311,6 +311,26 @@ const CoverageManagement = () => {
                     <Button onClick={() => handleOpenModal()}>
                         <Plus className="w-4 h-4 mr-2" /> Add Site
                     </Button>
+                    <Button variant="danger" onClick={async () => {
+                        if (confirm('WARNING: This will delete ALL coverage data. This action cannot be undone. Are you sure?')) {
+                            const doubleCheck = prompt('To confirm, type "DELETE ALL" in the box below:');
+                            if (doubleCheck === 'DELETE ALL') {
+                                setIsLoading(true);
+                                setLoadingMessage('Deleting all data...');
+                                try {
+                                    await fetch('/api/coverage/all', { method: 'DELETE' });
+                                    await fetchData(1, '');
+                                    alert('All data deleted successfully.');
+                                } catch (error) {
+                                    alert('Failed to delete data.');
+                                } finally {
+                                    setIsLoading(false);
+                                }
+                            }
+                        }
+                    }}>
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete All
+                    </Button>
                 </div>
             </div>
 

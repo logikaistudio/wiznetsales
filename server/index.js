@@ -154,6 +154,15 @@ app.put('/api/coverage/:id', async (req, res) => {
         res.json({ message: 'Site updated' });
     } catch (err) {
         console.error(err);
+    }
+});
+
+app.delete('/api/coverage/all', async (req, res) => {
+    try {
+        await db.query('TRUNCATE TABLE coverage_sites RESTART IDENTITY');
+        res.json({ message: 'All sites deleted' });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
