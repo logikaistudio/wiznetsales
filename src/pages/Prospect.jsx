@@ -38,6 +38,7 @@ const Prospect = () => {
         salesName: '',
         status: 'Prospect',
         prospectDate: new Date().toISOString().split('T')[0],
+        isActive: true,
         files: [] // Array of { name, data, type }
     });
 
@@ -93,6 +94,7 @@ const Prospect = () => {
             salesName: '',
             status: 'Prospect',
             prospectDate: new Date().toISOString().split('T')[0],
+            isActive: true,
             files: []
         });
         setFilteredCities([]);
@@ -438,6 +440,24 @@ const Prospect = () => {
                         />
                     </div>
 
+                    {/* Row 4.5: Active Status Toggle */}
+                    <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={formData.isActive}
+                                onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
+                                className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                            />
+                            <span className="text-sm font-medium text-gray-700">
+                                Active Subscriber
+                            </span>
+                        </label>
+                        <span className="text-xs text-gray-500 ml-auto">
+                            {formData.isActive ? '✓ Active' : '✗ Inactive'}
+                        </span>
+                    </div>
+
                     {/* Row 5: Documents */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Data Pendukung (PDF/JPG - Max 4 Files)</label>
@@ -506,6 +526,7 @@ const Prospect = () => {
                                 <th className="px-6 py-4">Prospect Date</th>
                                 <th className="px-6 py-4">Sales Person</th>
                                 <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Active</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -526,13 +547,21 @@ const Prospect = () => {
                                             {cust.status}
                                         </span>
                                     </td>
+                                    <td className="px-6 py-4">
+                                        <span className={cn(
+                                            "px-2 py-1 rounded text-xs font-medium",
+                                            cust.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                                        )}>
+                                            {cust.isActive ? '✓ Active' : '✗ Inactive'}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4 text-right">
                                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSelectCustomer(cust); }}>Edit</Button>
                                     </td>
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">No prospects found.</td>
+                                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">No prospects found.</td>
                                 </tr>
                             )}
                         </tbody>

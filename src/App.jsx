@@ -11,6 +11,7 @@ import Targets from './pages/master-data/Targets';
 import CoverageManagement from './pages/master-data/CoverageManagement';
 import ProductManagement from './pages/master-data/ProductManagement';
 import Promo from './pages/master-data/Promo';
+import HotNews from './pages/master-data/HotNews';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="coverage-management" element={<CoverageManagement />} />
             <Route path="product-management" element={<ProductManagement />} />
             <Route path="promo" element={<Promo />} />
+            <Route path="hotnews" element={<HotNews />} />
           </Route>
         </Route>
       </Routes>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     AreaChart,
     Area,
@@ -6,31 +6,19 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    ResponsiveContainer,
-    BarChart,
-    Bar,
-    Cell
+    ResponsiveContainer
 } from 'recharts';
 import {
     TrendingUp,
     Users,
-    Target,
+    MapPin,
     Award,
     ArrowUpRight,
-    ArrowDownRight
+    Bell,
+    Calendar
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
-
-const data = [
-    { name: 'Mon', sales: 40, prospects: 240 },
-    { name: 'Tue', sales: 30, prospects: 139 },
-    { name: 'Wed', sales: 20, prospects: 980 },
-    { name: 'Thu', sales: 27, prospects: 390 },
-    { name: 'Fri', sales: 18, prospects: 480 },
-    { name: 'Sat', sales: 23, prospects: 380 },
-    { name: 'Sun', sales: 34, prospects: 430 },
-];
 
 const StatCard = ({ title, value, change, icon: Icon, trend }) => (
     <motion.div
@@ -43,13 +31,15 @@ const StatCard = ({ title, value, change, icon: Icon, trend }) => (
             <div className="p-3 bg-primary/10 rounded-xl text-primary">
                 <Icon className="w-6 h-6" />
             </div>
-            <div className={cn(
-                "flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full",
-                trend === 'up' ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
-            )}>
-                {trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                {change}
-            </div>
+            {change && (
+                <div className={cn(
+                    "flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full",
+                    trend === 'up' ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
+                )}>
+                    {trend === 'up' && <ArrowUpRight className="w-4 h-4" />}
+                    {change}
+                </div>
+            )}
         </div>
         <div className="relative">
             <h3 className="text-gray-500 text-sm font-medium">{title}</h3>
@@ -59,6 +49,53 @@ const StatCard = ({ title, value, change, icon: Icon, trend }) => (
 );
 
 const Dashboard = () => {
+    const [stats, setStats] = useState({
+        activeHomepass: 0,
+        totalCities: 0,
+        achievement: 0,
+        monthlySales: []
+    });
+    const [hotNews, setHotNews] = useState([]);
+    const [chartPeriod, setChartPeriod] = useState('year'); // 'year' or 'month'
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        fetchDashboardData();
+        fetchHotNews();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            const res = await fetch('/api/dashboard/stats');
+            const data = await res.json();
+            setStats(data);
+        } catch (error) {
+            console.error('Error fetching dashboard stats:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const fetchHotNews = async () => {
+        try {
+            const res = await fetch('/api/hotnews');
+            const data = await res.json();
+            if (Array.isArray(data)) setHotNews(data.slice(0, 5)); // Max 5 items
+        } catch (error) {
+            console.error('Error fetching hot news:', error);
+        }
+    };
+
+    // Transform monthly sales data for chart
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const chartData = monthNames.map((name, index) => {
+        const monthData = stats.monthlySales.find(m => parseInt(m.month) === index + 1);
+        return {
+            name,
+            sales: monthData ? parseInt(monthData.count) : 0
+        };
+    });
+
     return (
         <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -76,29 +113,25 @@ const Dashboard = () => {
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
-                    title="Total Sales"
-                    value="Rp 128.5M"
-                    change="+12.5%"
-                    trend="up"
+                    title="Total Active Homepass"
+                    value={isLoading ? '...' : stats.activeHomepass.toLocaleString()}
                     icon={TrendingUp}
                 />
                 <StatCard
                     title="New Subscribers"
-                    value="482"
+                    value={isLoading ? '...' : stats.monthlySales.reduce((sum, m) => sum + parseInt(m.count || 0), 0).toLocaleString()}
                     change="+8.2%"
                     trend="up"
                     icon={Users}
                 />
                 <StatCard
-                    title="Conversion Rate"
-                    value="24.8%"
-                    change="-2.1%"
-                    trend="down"
-                    icon={Target}
+                    title="Total Cities"
+                    value={isLoading ? '...' : stats.totalCities.toLocaleString()}
+                    icon={MapPin}
                 />
                 <StatCard
                     title="Achievement"
-                    value="92%"
+                    value={isLoading ? '...' : stats.achievement.toLocaleString()}
                     change="+4.5%"
                     trend="up"
                     icon={Award}
@@ -116,15 +149,18 @@ const Dashboard = () => {
                 >
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-lg font-bold text-gray-800">Sales Analytics</h2>
-                        <select className="bg-gray-50 border-none text-sm text-gray-500 rounded-lg p-2 outline-none">
-                            <option>This Week</option>
-                            <option>Last Week</option>
-                            <option>This Month</option>
+                        <select
+                            className="bg-gray-50 border-none text-sm text-gray-500 rounded-lg p-2 outline-none cursor-pointer"
+                            value={chartPeriod}
+                            onChange={(e) => setChartPeriod(e.target.value)}
+                        >
+                            <option value="year">This Year (Jan-Dec)</option>
+                            <option value="month">This Month (Daily)</option>
                         </select>
                     </div>
                     <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={data}>
+                            <AreaChart data={chartData}>
                                 <defs>
                                     <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#317873" stopOpacity={0.3} />
@@ -144,27 +180,33 @@ const Dashboard = () => {
                     </div>
                 </motion.div>
 
-                {/* Side Chart/List */}
+                {/* Hot News Section */}
                 <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.3 }}
                     className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"
                 >
-                    <h2 className="text-lg font-bold text-gray-800 mb-6">Recent Activities</h2>
-                    <div className="space-y-6">
-                        {[1, 2, 3, 4, 5].map((i) => (
-                            <div key={i} className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-sm font-bold">
-                                    JS
+                    <div className="flex items-center gap-2 mb-6">
+                        <Bell className="w-5 h-5 text-primary" />
+                        <h2 className="text-lg font-bold text-gray-800">Hot News</h2>
+                    </div>
+                    <div className="space-y-4">
+                        {hotNews.length > 0 ? hotNews.map((news) => (
+                            <div key={news.id} className="border-l-4 border-primary pl-4 py-2 hover:bg-gray-50 transition-colors rounded-r">
+                                <h4 className="text-sm font-semibold text-gray-800 mb-1">{news.title}</h4>
+                                <p className="text-xs text-gray-600 line-clamp-2 mb-2">{news.content}</p>
+                                <div className="flex items-center gap-2 text-xs text-gray-400">
+                                    <Calendar className="w-3 h-3" />
+                                    {new Date(news.startDate).toLocaleDateString()}
                                 </div>
-                                <div className="flex-1">
-                                    <h4 className="text-sm font-medium text-gray-800">New subscriber added</h4>
-                                    <p className="text-xs text-gray-500">2 minutes ago</p>
-                                </div>
-                                <span className="text-xs font-medium text-emerald-600">+Rp 350k</span>
                             </div>
-                        ))}
+                        )) : (
+                            <div className="text-center py-8 text-gray-400 text-sm">
+                                <Bell className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                                <p>No announcements at the moment</p>
+                            </div>
+                        )}
                     </div>
                 </motion.div>
             </div>

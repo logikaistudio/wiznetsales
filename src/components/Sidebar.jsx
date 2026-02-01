@@ -14,7 +14,8 @@ import {
     Target,
     Box,
     Tag,
-    MapPin
+    MapPin,
+    Bell
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -37,6 +38,7 @@ const Sidebar = () => {
         { name: 'Coverage Management', path: '/master-data/coverage-management', icon: MapPin },
         { name: 'Product Management', path: '/master-data/product-management', icon: Box },
         { name: 'Promo', path: '/master-data/promo', icon: Tag },
+        { name: 'Hot News', path: '/master-data/hotnews', icon: Bell },
     ];
 
     return (

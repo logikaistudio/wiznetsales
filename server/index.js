@@ -545,6 +545,7 @@ app.get('/api/customers', async (req, res) => {
             salesId: row.sales_id,
             salesName: row.sales_name,
             status: row.status,
+            isActive: row.is_active !== false,
             prospectDate: row.prospect_date
         })));
     } catch (err) {
@@ -562,15 +563,16 @@ app.post('/api/customers', async (req, res) => {
             INSERT INTO customers (
                 customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
                 latitude, longitude, phone, email, product_id, product_name, rfs_date,
-                files, sales_id, sales_name, status, prospect_date
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+                files, sales_id, sales_name, status, prospect_date, is_active
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
             RETURNING id
         `;
 
         const values = [
             customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
-            item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date()
+            item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date(),
+            item.isActive !== false
         ];
 
         const result = await db.query(query, values);
@@ -590,14 +592,15 @@ app.put('/api/customers/:id', async (req, res) => {
             UPDATE customers SET
                 customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
                 latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
-                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20
-            WHERE id = $21
+                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21
+            WHERE id = $22
         `;
 
         const values = [
             item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
+            item.isActive !== false,
             id
         ];
 
