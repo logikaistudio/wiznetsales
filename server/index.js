@@ -828,6 +828,115 @@ app.get('/api/achievement', async (req, res) => {
     }
 });
 
+// ==========================================
+// TICKET MANAGEMENT (OMNIFLOW)
+// ==========================================
+
+// Helper to generate Ticket ID
+const generateTicketNumber = async () => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `TIK-${date}`;
+
+    // Check last ticket today
+    const res = await db.query(`SELECT ticket_number FROM tickets WHERE ticket_number LIKE '${prefix}-%' ORDER BY id DESC LIMIT 1`);
+
+    let sequence = 1;
+    if (res.rows.length > 0) {
+        const lastTicket = res.rows[0].ticket_number;
+        const lastSeq = parseInt(lastTicket.split('-')[2]);
+        sequence = lastSeq + 1;
+    }
+
+    return `${prefix}-${String(sequence).padStart(3, '0')}`;
+};
+
+// Get all tickets
+app.get('/api/tickets', async (req, res) => {
+    try {
+        const { status } = req.query;
+        let query = 'SELECT * FROM tickets';
+        const params = [];
+
+        if (status && status !== 'All') {
+            query += ' WHERE status = $1';
+            params.push(status);
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        const result = await db.query(query, params);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Create new ticket
+app.post('/api/tickets', async (req, res) => {
+    try {
+        const { customerId, customerName, category, description, assignedTo, assignedName, source, priority } = req.body;
+        const ticketNumber = await generateTicketNumber();
+
+        const query = `
+            INSERT INTO tickets (
+                ticket_number, customer_id, customer_name, category, description, 
+                assigned_to, assigned_name, source, priority, status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Open')
+            RETURNING *
+        `;
+
+        const values = [
+            ticketNumber, customerId, customerName, category, description,
+            assignedTo, assignedName, source || 'WhatsApp', priority || 'Medium'
+        ];
+
+        const result = await db.query(query, values);
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update ticket status
+app.put('/api/tickets/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, assignedTo, assignedName } = req.body;
+
+        let query = 'UPDATE tickets SET status = $1, updated_at = NOW()';
+        const values = [status];
+        let idx = 2;
+
+        if (status === 'Solved') {
+            query += `, solved_at = NOW()`;
+        }
+
+        if (assignedTo) {
+            query += `, assigned_to = $${idx++}, assigned_name = $${idx++}`;
+            values.push(assignedTo, assignedName);
+        }
+
+        query += ` WHERE id = $${idx}`;
+        values.push(id);
+
+        const result = await db.query(query, values);
+        res.json({ message: 'Ticket updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get Helpdesk/CS Agents
+app.get('/api/helpdesk-agents', async (req, res) => {
+    try {
+        const result = await db.query(`SELECT id, name, role FROM person_in_charge WHERE role IN ('CS', 'Helpdesk', 'Sales') ORDER BY name`);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
