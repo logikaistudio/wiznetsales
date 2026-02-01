@@ -43,8 +43,9 @@ const Sidebar = () => {
 
     return (
         <aside className="hidden md:flex flex-col w-[280px] bg-[#011F5B] text-white h-full shadow-xl overflow-y-auto">
-            <div className="p-6 flex items-center justify-center border-b border-white/10 shrink-0">
-                <img src="/wiznet_logo.png" alt="Wiznet" className="h-10 w-auto object-contain" />
+            <div className="p-6 flex flex-col items-center justify-center border-b border-white/10 shrink-0">
+                <img src="/wiznet_logo_transparent.png" alt="Wiznet" className="h-12 w-auto object-contain mb-2" />
+                <span className="text-lg font-bold tracking-wider text-white">Netsales</span>
             </div>
             <nav className="flex-1 px-4 py-6 space-y-2">
                 {navItems.map((item) => (
