@@ -95,17 +95,28 @@ const Prospect = () => {
             prospectDate: new Date().toISOString().split('T')[0],
             files: []
         });
+        setFilteredCities([]);
+        setDistricts([]);
+        setVillages([]);
     };
 
     const handleSelectCustomer = (customer) => {
         setSelectedId(customer.id);
-        setFormData({
+        const data = {
             ...customer,
             rfsDate: customer.rfsDate ? customer.rfsDate.split('T')[0] : '',
             prospectDate: customer.prospectDate ? customer.prospectDate.split('T')[0] : '',
             files: customer.files || []
-        });
-        // Scroll to top
+        };
+        setFormData(data);
+
+        // Trigger population logic for edit
+        if (data.area) { // Area is Cluster Name, find cluster
+            const cluster = clusters.find(c => c.name === data.area);
+            if (cluster) {
+                setFilteredCities(cluster.cities || []);
+            }
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -161,6 +172,114 @@ const Prospect = () => {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    // --- AUTO POPULATE LOCATION LOGIC ---
+
+    // 1. Clusters (Area)
+    const [clusters, setClusters] = useState([]);
+    // 2. Cities (Kabupaten) - derived from selected Cluster
+    const [filteredCities, setFilteredCities] = useState([]);
+
+    // 3. API Data for Districts/Villages
+    const [provincesAPI, setProvincesAPI] = useState([]);
+    const [districts, setDistricts] = useState([]); // Kecamatan
+    const [villages, setVillages] = useState([]); // Kelurahan
+
+    const fetchAuxData = async () => {
+        try {
+            const cRes = await fetch('/api/targets');
+            const cData = await cRes.json();
+            if (Array.isArray(cData)) {
+                setClusters(cData);
+            }
+
+            const pRes = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
+            if (pRes.ok) {
+                const pData = await pRes.json();
+                setProvincesAPI(pData);
+            }
+        } catch (e) {
+            console.error("Location Fetch Error", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchAuxData();
+    }, []);
+
+    const handleAreaChange = (e) => {
+        const clusterName = e.target.value;
+        const cluster = clusters.find(c => c.name === clusterName);
+
+        setFormData(prev => ({
+            ...prev,
+            area: clusterName,
+            kabupaten: '',
+            kecamatan: '',
+            kelurahan: ''
+        }));
+        setFilteredCities(cluster ? cluster.cities : []);
+        setDistricts([]);
+        setVillages([]);
+    };
+
+    const handleCityChange = async (e) => {
+        const cityName = e.target.value;
+        const selectedCityObj = filteredCities.find(c => c.name === cityName);
+
+        setFormData(prev => ({
+            ...prev,
+            kabupaten: cityName,
+            kecamatan: '',
+            kelurahan: ''
+        }));
+
+        if (selectedCityObj && provincesAPI.length > 0) {
+            const provName = selectedCityObj.province.toUpperCase();
+            // Fuzzy match logic if needed, but usually simple match works for standard names
+            const provApi = provincesAPI.find(p => p.name === provName) || provincesAPI.find(p => provName.includes(p.name));
+
+            if (provApi) {
+                try {
+                    const rRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${provApi.id}.json`);
+                    const rData = await rRes.json();
+
+                    const cityApi = rData.find(r => r.name === cityName.toUpperCase());
+
+                    if (cityApi) {
+                        const dRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${cityApi.id}.json`);
+                        const dData = await dRes.json();
+                        setDistricts(dData);
+                    }
+                } catch (error) {
+                    console.error("API location fetch error", error);
+                }
+            }
+        }
+    };
+
+    const handleDistrictChange = async (e) => {
+        const districtName = e.target.value;
+        const selectedDist = districts.find(d => d.name === districtName);
+
+        setFormData(prev => ({
+            ...prev,
+            kecamatan: districtName,
+            kelurahan: ''
+        }));
+
+        if (selectedDist) {
+            try {
+                const vRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${selectedDist.id}.json`);
+                const vData = await vRes.json();
+                setVillages(vData);
+            } catch (err) { console.error(err); }
+        }
+    };
+
+    const handleVillageChange = (e) => {
+        setFormData(prev => ({ ...prev, kelurahan: e.target.value }));
     };
 
     // Filter Logic
@@ -223,10 +342,45 @@ const Prospect = () => {
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <Input label="Area" value={formData.area} onChange={e => setFormData({ ...formData, area: e.target.value })} placeholder="Sales Area?" />
-                            <Input label="Kabupaten" value={formData.kabupaten} onChange={e => setFormData({ ...formData, kabupaten: e.target.value })} />
-                            <Input label="Kecamatan" value={formData.kecamatan} onChange={e => setFormData({ ...formData, kecamatan: e.target.value })} />
-                            <Input label="Kelurahan" value={formData.kelurahan} onChange={e => setFormData({ ...formData, kelurahan: e.target.value })} />
+                            <Select
+                                label="Area (Cluster)"
+                                value={formData.area}
+                                onChange={handleAreaChange}
+                                options={clusters.map(c => ({ value: c.name, label: c.name }))}
+                                placeholder="Select Cluster"
+                            />
+                            <Select
+                                label="Kabupaten (City)"
+                                value={formData.kabupaten}
+                                onChange={handleCityChange}
+                                options={filteredCities.map(c => ({ value: c.name, label: c.name }))}
+                                disabled={!formData.area}
+                                placeholder="Select City"
+                            />
+
+                            {districts.length > 0 ? (
+                                <Select
+                                    label="Kecamatan"
+                                    value={formData.kecamatan}
+                                    onChange={handleDistrictChange}
+                                    options={districts.map(d => ({ value: d.name, label: d.name }))}
+                                    placeholder="Select District"
+                                />
+                            ) : (
+                                <Input label="Kecamatan" value={formData.kecamatan} onChange={e => setFormData({ ...formData, kecamatan: e.target.value })} placeholder="Type manual if needed" />
+                            )}
+
+                            {villages.length > 0 ? (
+                                <Select
+                                    label="Kelurahan"
+                                    value={formData.kelurahan}
+                                    onChange={handleVillageChange}
+                                    options={villages.map(v => ({ value: v.name, label: v.name }))}
+                                    placeholder="Select Village"
+                                />
+                            ) : (
+                                <Input label="Kelurahan" value={formData.kelurahan} onChange={e => setFormData({ ...formData, kelurahan: e.target.value })} placeholder="Type manual if needed" />
+                            )}
                         </div>
                     </div>
 
