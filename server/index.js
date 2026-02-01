@@ -713,14 +713,19 @@ app.delete('/api/hotnews/:id', async (req, res) => {
 
 app.get('/api/dashboard/stats', async (req, res) => {
     try {
-        // Total Active Homepass
-        const activeHomepass = await db.query(
-            `SELECT COUNT(*) as count FROM customers WHERE is_active = true AND status IN ('Billing', 'Installation')`
+        // Total Target (sum of all targets from all cities)
+        const totalTarget = await db.query(
+            `SELECT COALESCE(SUM(target), 0) as total FROM target_cities`
         );
 
-        // Total Cities (unique kabupaten from customers)
+        // Total Cities (count of cities in target_cities table)
         const totalCities = await db.query(
-            `SELECT COUNT(DISTINCT kabupaten) as count FROM customers WHERE kabupaten IS NOT NULL AND kabupaten != ''`
+            `SELECT COUNT(*) as count FROM target_cities`
+        );
+
+        // New Subscribers (active customers with is_active = true)
+        const newSubscribers = await db.query(
+            `SELECT COUNT(*) as count FROM customers WHERE is_active = true`
         );
 
         // Total Achievement (sum of all targets achieved - simplified)
@@ -740,8 +745,9 @@ app.get('/api/dashboard/stats', async (req, res) => {
         `);
 
         res.json({
-            activeHomepass: parseInt(activeHomepass.rows[0].count),
+            totalTarget: parseInt(totalTarget.rows[0].total),
             totalCities: parseInt(totalCities.rows[0].count),
+            newSubscribers: parseInt(newSubscribers.rows[0].count),
             achievement: parseInt(achievement.rows[0].total),
             monthlySales: monthlySales.rows
         });

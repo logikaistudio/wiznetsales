@@ -50,8 +50,9 @@ const StatCard = ({ title, value, change, icon: Icon, trend }) => (
 
 const Dashboard = () => {
     const [stats, setStats] = useState({
-        activeHomepass: 0,
+        totalTarget: 0,
         totalCities: 0,
+        newSubscribers: 0,
         achievement: 0,
         monthlySales: []
     });
@@ -113,13 +114,13 @@ const Dashboard = () => {
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
-                    title="Total Active Homepass"
-                    value={isLoading ? '...' : stats.activeHomepass.toLocaleString()}
+                    title="Total Target"
+                    value={isLoading ? '...' : stats.totalTarget.toLocaleString()}
                     icon={TrendingUp}
                 />
                 <StatCard
                     title="New Subscribers"
-                    value={isLoading ? '...' : stats.monthlySales.reduce((sum, m) => sum + parseInt(m.count || 0), 0).toLocaleString()}
+                    value={isLoading ? '...' : stats.newSubscribers.toLocaleString()}
                     change="+8.2%"
                     trend="up"
                     icon={Users}
