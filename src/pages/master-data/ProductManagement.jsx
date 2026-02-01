@@ -6,7 +6,7 @@ import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 
 const ProductManagement = () => {
-    const [activeTab, setActiveTab] = useState('retail'); // 'retail' | 'corporate'
+    const [activeTab, setActiveTab] = useState('broadband'); // 'broadband' | 'corporate'
     const [allProducts, setAllProducts] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +53,7 @@ const ProductManagement = () => {
                 cogs: '',
                 releaseDate: today,
                 bandwidth: activeTab === 'corporate' ? '' : undefined,
-                category: activeTab === 'retail' ? 'Retail' : 'Corporate'
+                category: activeTab === 'broadband' ? 'Broadband Home' : 'Corporate'
             });
             setIsEditMode(true);
         }
@@ -88,7 +88,7 @@ const ProductManagement = () => {
             ...formData,
             price: Number(formData.price),
             cogs: Number(formData.cogs),
-            category: activeTab === 'retail' ? 'Retail' : 'Corporate' // Ensure current tab category
+            category: activeTab === 'broadband' ? 'Broadband Home' : 'Corporate' // Ensure current tab category
         };
 
         try {
@@ -116,10 +116,10 @@ const ProductManagement = () => {
         }
     };
 
-    const retailData = allProducts.filter(p => p.category === 'Retail');
+    const retailData = allProducts.filter(p => p.category === 'Broadband Home');
     const corporateData = allProducts.filter(p => p.category === 'Corporate');
 
-    const filteredData = (activeTab === 'retail' ? retailData : corporateData).filter(item =>
+    const filteredData = (activeTab === 'broadband' ? retailData : corporateData).filter(item =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -149,8 +149,8 @@ const ProductManagement = () => {
 
             {/* Tabs */}
             <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl w-fit">
-                <button onClick={() => handleTabChange('retail')} className={cn("flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all", activeTab === 'retail' ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-                    <Package className="w-4 h-4" /> Retail
+                <button onClick={() => handleTabChange('broadband')} className={cn("flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all", activeTab === 'broadband' ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                    <Package className="w-4 h-4" /> Broadband Home
                 </button>
                 <button onClick={() => handleTabChange('corporate')} className={cn("flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all", activeTab === 'corporate' ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700")}>
                     <Briefcase className="w-4 h-4" /> Corporate

@@ -508,6 +508,107 @@ app.delete('/api/targets/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// CUSTOMERS & PROSPECTS
+// ==========================================
+
+app.get('/api/customers', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM customers ORDER BY created_at DESC');
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            customerId: row.customer_id,
+            type: row.type,
+            name: row.name,
+            address: row.address,
+            area: row.area,
+            kabupaten: row.kabupaten,
+            kecamatan: row.kecamatan,
+            kelurahan: row.kelurahan,
+            latitude: row.latitude ? parseFloat(row.latitude) : null,
+            longitude: row.longitude ? parseFloat(row.longitude) : null,
+            phone: row.phone,
+            email: row.email,
+            productId: row.product_id,
+            productName: row.product_name,
+            rfsDate: row.rfs_date,
+            files: row.files ? JSON.parse(row.files) : [],
+            salesId: row.sales_id,
+            salesName: row.sales_name,
+            status: row.status,
+            prospectDate: row.prospect_date
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/customers', async (req, res) => {
+    try {
+        const item = req.body;
+        // Generate a simple Customer ID if not provided (e.g., CUST-TIMESTAMP)
+        const customerId = item.customerId || `CUST-${Date.now()}`;
+
+        const query = `
+            INSERT INTO customers (
+                customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
+                latitude, longitude, phone, email, product_id, product_name, rfs_date,
+                files, sales_id, sales_name, status, prospect_date
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            RETURNING id
+        `;
+
+        const values = [
+            customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+            item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
+            item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date()
+        ];
+
+        const result = await db.query(query, values);
+        res.json({ message: 'Customer created', id: result.rows[0].id });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/customers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const item = req.body;
+
+        const query = `
+            UPDATE customers SET
+                customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
+                latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
+                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20
+            WHERE id = $21
+        `;
+
+        const values = [
+            item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+            item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
+            item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
+            id
+        ];
+
+        await db.query(query, values);
+        res.json({ message: 'Customer updated' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/customers/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM customers WHERE id = $1', [req.params.id]);
+        res.json({ message: 'Customer deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
