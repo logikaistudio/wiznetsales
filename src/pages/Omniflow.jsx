@@ -268,21 +268,37 @@ const Omniflow = () => {
                     <div className="h-4 w-px bg-gray-200"></div>
 
                     {/* Stats */}
-                    <div className="flex gap-4 md:gap-6 text-sm">
-                        <div className="flex items-center gap-2" title="Open Tickets">
-                            <AlertCircle className="w-4 h-4 text-red-500" />
-                            <span className="font-bold text-gray-700">{stats.open}</span>
-                            <span className="text-xs text-gray-400 font-medium uppercase hidden sm:inline">Open</span>
+                    <div className="flex gap-3 md:gap-6">
+                        <div className="flex flex-col items-center justify-center bg-red-50 px-4 py-1.5 rounded-lg border border-red-100 min-w-[80px] shadow-sm" title="Open Tickets">
+                            <div className="flex items-center gap-1.5">
+                                <AlertCircle className="w-4 h-4 text-red-500" />
+                                <span className="text-2xl font-black text-red-600 leading-none">{stats.open}</span>
+                            </div>
+                            <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider mt-0.5">Open</span>
                         </div>
-                        <div className="flex items-center gap-2" title="In Progress">
-                            <Clock className="w-4 h-4 text-yellow-500" />
-                            <span className="font-bold text-gray-700">{stats.progress}</span>
-                            <span className="text-xs text-gray-400 font-medium uppercase hidden sm:inline">In Progress</span>
+
+                        <div className="flex flex-col items-center justify-center bg-yellow-50 px-4 py-1.5 rounded-lg border border-yellow-100 min-w-[80px] shadow-sm" title="In Progress">
+                            <div className="flex items-center gap-1.5">
+                                <Clock className="w-4 h-4 text-yellow-500" />
+                                <span className="text-2xl font-black text-yellow-600 leading-none">{stats.progress}</span>
+                            </div>
+                            <span className="text-[10px] text-yellow-500 font-bold uppercase tracking-wider mt-0.5">Progress</span>
                         </div>
-                        <div className="flex items-center gap-2" title="Solved Today">
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                            <span className="font-bold text-gray-700">{stats.solved}</span>
-                            <span className="text-xs text-gray-400 font-medium uppercase hidden sm:inline">Solved</span>
+
+                        <div className="flex flex-col items-center justify-center bg-green-50 px-4 py-1.5 rounded-lg border border-green-100 min-w-[80px] shadow-sm" title="Solved Today">
+                            <div className="flex items-center gap-1.5">
+                                <CheckCircle className="w-4 h-4 text-green-500" />
+                                <span className="text-2xl font-black text-green-600 leading-none">{stats.solved}</span>
+                            </div>
+                            <span className="text-[10px] text-green-500 font-bold uppercase tracking-wider mt-0.5">Solved</span>
+                        </div>
+
+                        <div className="hidden md:flex flex-col items-center justify-center bg-gray-50 px-4 py-1.5 rounded-lg border border-gray-200 min-w-[80px]" title="Total Today">
+                            <div className="flex items-center gap-1.5">
+                                <LayoutDashboard className="w-4 h-4 text-gray-400" />
+                                <span className="text-2xl font-black text-gray-600 leading-none">{stats.today}</span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Volume</span>
                         </div>
                     </div>
                 </div>
