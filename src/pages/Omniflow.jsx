@@ -116,6 +116,7 @@ const Omniflow = () => {
     // Auto-search customers
     const [customerSearch, setCustomerSearch] = useState('');
     const [filteredCustomers, setFilteredCustomers] = useState([]);
+    const [selectedCustomerInfo, setSelectedCustomerInfo] = useState(null);
 
     useEffect(() => {
         fetchTickets();
@@ -124,11 +125,13 @@ const Omniflow = () => {
     }, []);
 
     useEffect(() => {
-        if (customerSearch) {
+        if (customerSearch && customers.length > 0) {
+            const searchLower = customerSearch.toLowerCase();
             setFilteredCustomers(
                 customers.filter(c =>
-                    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                    c.customerId.toLowerCase().includes(customerSearch.toLowerCase())
+                    (c.name && c.name.toLowerCase().includes(searchLower)) ||
+                    (c.customerId && c.customerId.toLowerCase().includes(searchLower)) ||
+                    (c.phone && c.phone.replace(/\D/g, '').includes(searchLower)) // Search by formatted phone
                 ).slice(0, 5)
             );
         } else {
@@ -188,6 +191,23 @@ const Omniflow = () => {
         }
     };
 
+    // Reset form helper
+    const resetForm = () => {
+        setIsCreateModalOpen(false);
+        setFormData({
+            customerId: '',
+            customerName: '',
+            category: 'Gangguan Internet',
+            description: '',
+            source: 'WhatsApp',
+            priority: 'Medium',
+            assignedTo: '',
+            assignedName: ''
+        });
+        setCustomerSearch('');
+        setSelectedCustomerInfo(null);
+    };
+
     const handleCreateTicket = async (e) => {
         e.preventDefault();
         try {
@@ -197,18 +217,7 @@ const Omniflow = () => {
                 body: JSON.stringify(formData)
             });
             if (res.ok) {
-                setIsCreateModalOpen(false);
-                setFormData({
-                    customerId: '',
-                    customerName: '',
-                    category: 'Gangguan Internet',
-                    description: '',
-                    source: 'WhatsApp',
-                    priority: 'Medium',
-                    assignedTo: '',
-                    assignedName: ''
-                });
-                setCustomerSearch('');
+                resetForm();
                 fetchTickets();
             }
         } catch (error) {
@@ -273,6 +282,7 @@ const Omniflow = () => {
             customerName: cust.name
         });
         setCustomerSearch(cust.name);
+        setSelectedCustomerInfo(cust); // Save for display
         setFilteredCustomers([]);
     };
 
@@ -462,39 +472,84 @@ const Omniflow = () => {
             )}
 
             {/* CREATE MODAL */}
-            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="New Support Ticket (WA)" className="max-w-2xl">
+            <Modal isOpen={isCreateModalOpen} onClose={resetForm} title="New Support Ticket (WA)" className="max-w-2xl">
                 <form onSubmit={handleCreateTicket} className="space-y-6">
                     <div className="space-y-1.5 relative">
-                        <label className="text-sm font-medium text-gray-700">Find Customer (Auto-search)</label>
+                        <label className="text-sm font-medium text-gray-700">Find Customer (Copy WA Number / Name / ID)</label>
                         <div className="relative">
-                            <input
-                                type="text"
-                                value={customerSearch}
-                                onChange={e => {
-                                    setCustomerSearch(e.target.value);
-                                    if (e.target.value === '') {
-                                        setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-                                    }
-                                }}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                placeholder="Type name or ID..."
-                            />
-                            {filteredCustomers.length > 0 && (
+                            <div className="flex gap-2">
+                                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
+                                <input
+                                    type="text"
+                                    value={customerSearch}
+                                    onChange={e => {
+                                        setCustomerSearch(e.target.value);
+                                        if (e.target.value === '') {
+                                            setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
+                                            setSelectedCustomerInfo(null);
+                                        }
+                                    }}
+                                    className="w-full pl-10 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                    placeholder="Paste phone number here (e.g. 0812xxx)..."
+                                    autoFocus
+                                />
+                                {selectedCustomerInfo && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCustomerSearch('');
+                                            setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
+                                            setSelectedCustomerInfo(null);
+                                        }}
+                                        className="text-gray-400 hover:text-red-500"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Search Results Dropdown */}
+                            {filteredCustomers.length > 0 && !selectedCustomerInfo && (
                                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                     {filteredCustomers.map(c => (
                                         <div
                                             key={c.id}
-                                            className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                            className="px-4 py-3 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0"
                                             onClick={() => selectCustomer(c)}
                                         >
-                                            <div className="font-medium text-gray-900">{c.name}</div>
-                                            <div className="text-xs text-gray-500">{c.customerId} - {c.address}</div>
+                                            <div className="flex justify-between">
+                                                <span className="font-medium text-gray-900">{c.name}</span>
+                                                <span className="text-gray-500 text-xs">{c.phone}</span>
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-0.5">{c.customerId} • {c.address}</div>
                                         </div>
                                     ))}
                                 </div>
                             )}
                         </div>
+
+                        {/* Selected Customer Snapshot Card */}
+                        {selectedCustomerInfo && (
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mt-2 flex gap-3 items-start animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="bg-white p-2 rounded-full shadow-sm">
+                                    <User className="w-4 h-4 text-blue-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-blue-900">{selectedCustomerInfo.name}</p>
+                                    <p className="text-xs text-blue-700">{selectedCustomerInfo.address}, {selectedCustomerInfo.kabupaten}</p>
+                                    <p className="text-xs text-blue-600 mt-1 flex gap-2">
+                                        <span className="bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">
+                                            {selectedCustomerInfo.productName || 'No Plan'}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Phone className="w-3 h-3" /> {selectedCustomerInfo.phone}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </div>
+
 
                     <div className="grid grid-cols-2 gap-4">
                         <Select
