@@ -88,11 +88,21 @@ const Omniflow = () => {
         if (matchedCust) {
             setCustomerData(matchedCust);
             // 2. Fetch Tickets for this Customer
-            // We need to filter tickets by customer_name or id from the all tickets endpoint (or creating a specific endpoint is better)
-            const resTickets = await fetch(`/api/tickets`);
-            const allTickets = await resTickets.json();
-            const myTickets = allTickets.filter(t => t.customer_id === matchedCust.id);
-            setCustomerTickets(myTickets);
+            try {
+                const resTickets = await fetch(`/api/tickets`);
+                if (resTickets.ok) {
+                    const allTickets = await resTickets.json();
+                    if (Array.isArray(allTickets)) {
+                        const myTickets = allTickets.filter(t => t.customer_id === matchedCust.id);
+                        setCustomerTickets(myTickets);
+                    } else {
+                        setCustomerTickets([]);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load tickets", e);
+                setCustomerTickets([]);
+            }
 
             // Auto-fill description with last message
             setTicketForm(prev => ({ ...prev, description: selectedChat.lastMessage }));

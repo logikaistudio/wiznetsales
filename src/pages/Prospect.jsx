@@ -549,7 +549,7 @@ const Prospect = () => {
                                     <td className="px-6 py-4 text-gray-600">
                                         <div className="flex items-center">
                                             {cust.name}
-                                            {cust.openTicketCount > 0 && (
+                                            {(cust.openTicketCount || 0) > 0 && (
                                                 <div className="ml-2 flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800 border border-red-200" title="Has Open Tickets">
                                                     <AlertCircle className="w-3 h-3 mr-1" />
                                                     {cust.openTicketCount}
