@@ -241,14 +241,19 @@ app.get('/api/coverage/check-point', async (req, res) => {
 
         const result = await db.query(query, [lat, long]);
 
+        // Get dynamic radius
+        const setRes = await db.query("SELECT value FROM system_settings WHERE key = 'coverageRadius'");
+        const limitMetres = setRes.rows.length > 0 ? parseInt(setRes.rows[0].value) : 250;
+
         if (result.rows.length > 0) {
             const nearest = result.rows[0];
             const distance = Math.round(nearest.distance); // meters
-            const isCovered = distance <= 250; // 250m threshold
+            const isCovered = distance <= limitMetres;
 
             res.json({
                 covered: isCovered,
                 distance: distance,
+                radiusLimit: limitMetres,
                 nearestNode: {
                     site_id: nearest.site_id,
                     ampli: nearest.ampli,
@@ -578,6 +583,80 @@ app.delete('/api/targets/:id', async (req, res) => {
 // ==========================================
 // CUSTOMERS & PROSPECTS
 // ==========================================
+
+// ==========================================
+// SETTINGS
+// ==========================================
+
+app.get('/api/settings', async (req, res) => {
+    try {
+        // Create table if not exists (lazy migration)
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key VARCHAR(50) PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        const result = await db.query('SELECT * FROM system_settings');
+        const settings = {};
+        result.rows.forEach(row => {
+            settings[row.key] = row.value;
+        });
+        res.json(settings);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/settings', async (req, res) => {
+    try {
+        const { key, value } = req.body;
+        await db.query(`
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = DISTINCTFrom.value, updated_at = NOW()
+        `, [key, String(value)]);
+        res.json({ message: 'Setting saved' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// ==========================================
+// CUSTOMERS & PROSPECTS
+// ==========================================
+
+app.post('/api/customers/bulk', async (req, res) => {
+    try {
+        const { data } = req.body;
+        if (!data || !Array.isArray(data)) throw new Error('Invalid data format');
+
+        // Note: For simplicity doing loop insert. ideally use pg-format or UNNEST
+        let count = 0;
+        for (const item of data) {
+            const customerId = item.customerId || `CUST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            await db.query(`
+                INSERT INTO customers (
+                    customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
+                    latitude, longitude, phone, email, product_name, status, prospect_date, is_active
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                ON CONFLICT (customer_id) DO NOTHING
+             `, [
+                customerId, item.type || 'Broadband Home', item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+                item.latitude || 0, item.longitude || 0, item.phone, item.email, item.productName, item.status || 'Prospect',
+                item.prospectDate || new Date(), item.isActive !== false
+            ]);
+            count++;
+        }
+        res.json({ message: `Imported ${count} customers` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 app.get('/api/customers', async (req, res) => {
     try {

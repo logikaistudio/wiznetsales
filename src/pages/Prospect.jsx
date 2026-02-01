@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { User, MapPin, Phone, Mail, Calendar, FileText, Save, Search, Plus, Trash2, CheckCircle, RefreshCw, Loader2, Edit, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, MapPin, Phone, Mail, FileText, Save, Search, Plus, Trash2, CheckCircle, Loader2, Edit, AlertCircle, Upload, Download, RefreshCw } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
-import { cn } from '../lib/utils'; // Keep this relative path standard
+import { cn } from '../lib/utils';
+import * as XLSX from 'xlsx';
 
 const Prospect = () => {
     // Data States
@@ -16,8 +17,14 @@ const Prospect = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedId, setSelectedId] = useState(null); // ID of customer being edited/viewed
+    const [selectedId, setSelectedId] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    // Import/Export States
+    const fileInputRef = useRef(null);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importPreview, setImportPreview] = useState([]);
+    const [importLoading, setImportLoading] = useState(false);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -74,137 +81,70 @@ const Prospect = () => {
 
     useEffect(() => {
         fetchData();
-        fetchAuxData(); // Fetch location data for dropdowns
+        fetchAuxData();
     }, []);
 
-    // Debounce Check Logic for Coverage
+    // Debounce Check Logic
     useEffect(() => {
         const timer = setTimeout(async () => {
             const lat = parseFloat(formData.latitude);
             const lng = parseFloat(formData.longitude);
-
             if (!isNaN(lat) && !isNaN(lng)) {
-
-                // Only check if coordinates allow (e.g. valid range)
                 if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
-
                 setCoverageStatus(prev => ({ ...prev, loading: true, message: 'Checking coverage...' }));
-
                 try {
                     const res = await fetch(`/api/coverage/check-point?lat=${lat}&long=${lng}`);
                     const data = await res.json();
-
                     if (data.covered) {
                         setCoverageStatus({
-                            checked: true,
-                            isCovered: true,
-                            distance: data.distance,
-                            node: data.nearestNode,
-                            loading: false,
+                            checked: true, isCovered: true, distance: data.distance, node: data.nearestNode, loading: false,
                             message: `Covered! (${data.distance}m from ${data.nearestNode.site_id})`
                         });
                     } else {
                         setCoverageStatus({
-                            checked: true,
-                            isCovered: false,
-                            distance: data.distance,
-                            node: null,
-                            loading: false,
+                            checked: true, isCovered: false, distance: data.distance, node: null, loading: false,
                             message: data.distance > -1 ? `Out of Coverage (${data.distance}m from nearest node)` : 'No coverage data available'
                         });
                     }
                 } catch (error) {
-                    console.error("Coverage check failed", error);
                     setCoverageStatus(prev => ({ ...prev, loading: false, message: 'Check failed' }));
                 }
             } else {
                 setCoverageStatus({ checked: false, isCovered: false, distance: 0, node: null, loading: false, message: '' });
             }
-        }, 1000); // 1s debounce
-
+        }, 1000);
         return () => clearTimeout(timer);
     }, [formData.latitude, formData.longitude]);
 
     // Handlers
     const handleOpenModal = (customer = null) => {
         setCoverageStatus({ checked: false, isCovered: false, distance: 0, node: null, loading: false, message: '' });
-
         if (customer) {
             setSelectedId(customer.id);
-            const data = {
+            setFormData({
                 ...customer,
                 rfsDate: customer.rfsDate ? customer.rfsDate.split('T')[0] : '',
                 prospectDate: customer.prospectDate ? customer.prospectDate.split('T')[0] : '',
                 files: customer.files || []
-            };
-            setFormData(data);
-
-            // Trigger population logic for edit
-            if (data.area) {
-                const cluster = clusters.find(c => c.name === data.area);
-                if (cluster) {
-                    setFilteredCities(cluster.cities || []);
-                }
+            });
+            // Auto area select
+            if (customer.area) {
+                const cluster = clusters.find(c => c.name === customer.area);
+                if (cluster) setFilteredCities(cluster.cities || []);
             }
         } else {
             setSelectedId(null);
             setFormData({
                 customerId: `CUST-${Date.now()}`,
                 type: 'Broadband Home',
-                name: '',
-                address: '',
-                area: '',
-                kabupaten: '',
-                kecamatan: '',
-                kelurahan: '',
-                latitude: '',
-                longitude: '',
-                phone: '',
-                email: '',
-                productId: '',
-                productName: '',
-                rfsDate: '',
-                salesId: '',
-                salesName: '',
-                status: 'Prospect',
-                prospectDate: new Date().toISOString().split('T')[0],
-                isActive: true,
-                files: []
+                name: '', address: '', area: '', kabupaten: '', kecamatan: '', kelurahan: '',
+                latitude: '', longitude: '', phone: '', email: '', productId: '', productName: '',
+                rfsDate: '', salesId: '', salesName: '', status: 'Prospect',
+                prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: []
             });
             setFilteredCities([]);
-            setDistricts([]);
-            setVillages([]);
         }
         setIsModalOpen(true);
-    };
-
-    const handleSelectCustomer = (customer) => {
-        handleOpenModal(customer);
-    };
-
-    const handleFileUpload = (e) => {
-        const files = Array.from(e.target.files);
-        files.forEach(file => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setFormData(prev => ({
-                    ...prev,
-                    files: [...prev.files, {
-                        name: file.name,
-                        type: file.type,
-                        data: reader.result // Base64
-                    }]
-                }));
-            };
-            reader.readAsDataURL(file);
-        });
-    };
-
-    const removeFile = (index) => {
-        setFormData(prev => ({
-            ...prev,
-            files: prev.files.filter((_, i) => i !== index)
-        }));
     };
 
     const handleSave = async (e) => {
@@ -213,77 +153,99 @@ const Prospect = () => {
         try {
             const url = selectedId ? `/api/customers/${selectedId}` : '/api/customers';
             const method = selectedId ? 'PUT' : 'POST';
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-            if (!res.ok) throw new Error('Failed to save');
+            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
             await fetchData();
-            setIsModalOpen(false); // Close modal after save
+            setIsModalOpen(false);
             alert('Data saved successfully!');
         } catch (error) {
-            console.error('Save error:', error);
             alert('Failed to save data');
         } finally {
             setIsSaving(false);
         }
     };
 
-    // --- AUTO POPULATE LOCATION LOGIC ---
+    // EXPORT IMPORT LOGIC
+    const handleExport = () => {
+        const worksheet = XLSX.utils.json_to_sheet(customers.map(c => ({
+            "Customer ID": c.customerId,
+            "Name": c.name,
+            "Address": c.address,
+            "Area": c.area,
+            "City": c.kabupaten,
+            "District": c.kecamatan,
+            "Village": c.kelurahan,
+            "Phone": c.phone,
+            "Product": c.productName,
+            "Status": c.status,
+            "Latitude": c.latitude,
+            "Longitude": c.longitude,
+            "Sales": c.salesName
+        })));
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Prospects");
+        XLSX.writeFile(workbook, `Prospects_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const wb = XLSX.read(evt.target.result, { type: 'binary' });
+            const jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            // Map common excel headers to our schema (Simple mapping for now)
+            const mapped = jsonData.map(row => ({
+                customerId: row['Customer ID'],
+                name: row['Name'],
+                address: row['Address'],
+                area: row['Area'],
+                kabupaten: row['City'] || row['Kabupaten'],
+                kecamatan: row['District'] || row['Kecamatan'],
+                kelurahan: row['Village'] || row['Kelurahan'],
+                phone: String(row['Phone'] || ''),
+                productName: row['Product'],
+                status: row['Status'] || 'Prospect',
+                latitude: row['Latitude'],
+                longitude: row['Longitude'],
+                salesName: row['Sales']
+            }));
+            setImportPreview(mapped);
+            setIsImportModalOpen(true);
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+    };
+
+    const confirmImport = async () => {
+        setImportLoading(true);
+        try {
+            await fetch('/api/customers/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: importPreview })
+            });
+            alert("Import successful!");
+            setIsImportModalOpen(false);
+            await fetchData();
+        } catch (e) {
+            alert("Import failed: " + e.message);
+        } finally {
+            setImportLoading(false);
+        }
+    };
+
     const [clusters, setClusters] = useState([]);
     const [filteredCities, setFilteredCities] = useState([]);
-    const [provincesAPI, setProvincesAPI] = useState([]);
-    const [districts, setDistricts] = useState([]); // Kecamatan
-    const [villages, setVillages] = useState([]); // Kelurahan
 
     const fetchAuxData = async () => {
         try {
             const cRes = await fetch('/api/targets');
             const cData = await cRes.json();
-            if (Array.isArray(cData)) {
-                setClusters(cData);
-            }
-            // Optional: Fetch provinces API if needed for other logic, but simplified here
+            if (Array.isArray(cData)) setClusters(cData);
         } catch (e) {
             console.error("Location Fetch Error", e);
         }
     };
-
-    const handleAreaChange = (e) => {
-        const clusterName = e.target.value;
-        const cluster = clusters.find(c => c.name === clusterName);
-        setFormData(prev => ({
-            ...prev,
-            area: clusterName,
-            kabupaten: '', kecamatan: '', kelurahan: ''
-        }));
-        setFilteredCities(cluster ? cluster.cities : []);
-        setDistricts([]);
-        setVillages([]);
-    };
-
-    const handleCityChange = async (e) => {
-        const cityName = e.target.value;
-        setFormData(prev => ({
-            ...prev,
-            kabupaten: cityName, kecamatan: '', kelurahan: ''
-        }));
-
-        // Simulating API call for districts (Kecamatan)
-        // Ideally should fetch from API based on City ID.
-        // For prototype, we'll just use manual input capability or mock if needed.
-        // We'll leave it as free text entry capability if API fails, OR implement dummy districts
-        setDistricts([{ name: 'District A' }, { name: 'District B' }]); // Mock
-    };
-
-    // Mock handler for District
-    const handleDistrictChange = (e) => {
-        const distName = e.target.value;
-        setFormData(prev => ({ ...prev, kecamatan: distName, kelurahan: '' }));
-        setVillages([{ name: 'Village 1' }, { name: 'Village 2' }]); // Mock
-    };
-
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -292,7 +254,15 @@ const Prospect = () => {
                     <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Prospects & Customers</h1>
                     <p className="text-gray-500 mt-1">Manage pipeline, customers, and subscriptions.</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2 flex-wrap">
+                    <Button variant="outline" onClick={handleExport}>
+                        <Download className="w-4 h-4 mr-2" /> Export
+                    </Button>
+                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
+                    <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+                        <Upload className="w-4 h-4 mr-2" /> Import
+                    </Button>
+                    <div className="w-px bg-gray-300 mx-1"></div>
                     <div className="relative">
                         <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                         <input
@@ -300,10 +270,10 @@ const Prospect = () => {
                             placeholder="Search..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm w-64 shadow-sm"
+                            className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm w-48 lg:w-64 shadow-sm"
                         />
                     </div>
-                    <Button onClick={() => handleOpenModal()} className="shadow-blue-500/20 shadow-lg hover:shadow-blue-500/30 transition-all">
+                    <Button onClick={() => handleOpenModal()} className="shadow-blue-500/20 shadow-lg">
                         <Plus className="w-4 h-4 mr-2" /> Add New
                     </Button>
                 </div>
@@ -363,7 +333,7 @@ const Prospect = () => {
                                             </span>
                                         </td>
                                         <td className="p-4 text-right">
-                                            <Button variant="ghost" size="sm" onClick={() => handleSelectCustomer(customer)}>
+                                            <Button variant="ghost" size="sm" onClick={() => handleOpenModal(customer)}>
                                                 <Edit className="w-4 h-4 text-gray-400 hover:text-gray-600" />
                                             </Button>
                                         </td>
@@ -443,7 +413,11 @@ const Prospect = () => {
                                 <Select
                                     options={clusters.map(c => ({ value: c.name, label: c.name }))}
                                     value={formData.area}
-                                    onChange={handleAreaChange}
+                                    onChange={(e) => {
+                                        const c = clusters.find(cl => cl.name === e.target.value);
+                                        setFormData({ ...formData, area: e.target.value });
+                                        if (c) setFilteredCities(c.cities);
+                                    }}
                                 />
                             </div>
                             <div>
@@ -451,15 +425,13 @@ const Prospect = () => {
                                 <Select
                                     options={filteredCities.map(c => ({ value: c.name, label: c.name }))}
                                     value={formData.kabupaten}
-                                    onChange={handleCityChange}
-                                    disabled={!formData.area}
+                                    onChange={e => setFormData({ ...formData, kabupaten: e.target.value })}
                                 />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Kecamatan</label>
-                                {/* Fallback to simple input if mock list is empty or complex */}
                                 <input
                                     className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                                     value={formData.kecamatan}
@@ -510,27 +482,6 @@ const Prospect = () => {
                         </div>
                     </div>
 
-                    {/* Files - Simplified for now */}
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-gray-900 border-b pb-2 flex items-center gap-2">
-                            <FileText className="w-4 h-4" /> Documents (KTP/Form)
-                        </h4>
-                        <input type="file" multiple onChange={handleFileUpload} className="text-xs block w-full text-slate-500
-                            file:mr-4 file:py-2 file:px-4
-                            file:rounded-full file:border-0
-                            file:text-xs file:font-semibold
-                            file:bg-blue-50 file:text-blue-700
-                            hover:file:bg-blue-100" />
-                        <div className="flex gap-2 flex-wrap">
-                            {formData.files.map((f, i) => (
-                                <div key={i} className="bg-gray-100 p-2 rounded text-xs flex items-center gap-2">
-                                    <span className="max-w-[100px] truncate">{f.name}</span>
-                                    <button type="button" onClick={() => removeFile(i)} className="text-red-500 hover:text-red-700">×</button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
                     {/* Footer Actions */}
                     <div className="md:col-span-2 flex justify-end gap-3 pt-6 border-t mt-4">
                         <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
@@ -539,8 +490,36 @@ const Prospect = () => {
                             {isSaving ? 'Saving...' : 'Save Data'}
                         </Button>
                     </div>
-
                 </form>
+            </Modal>
+
+            {/* Import Preview Modal */}
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Prospects">
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">Ready to import {importPreview.length} records. Please review the first few rows.</p>
+                    <div className="max-h-[300px] overflow-auto border rounded text-xs">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 border-b sticky top-0">
+                                <tr>
+                                    <th className="p-2">Name</th>
+                                    <th className="p-2">Phone</th>
+                                    <th className="p-2">Product</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {importPreview.slice(0, 20).map((r, i) => (
+                                    <tr key={i} className="border-b"><td className="p-2">{r.name}</td><td className="p-2">{r.phone}</td><td className="p-2">{r.productName}</td></tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
+                        <Button onClick={confirmImport} disabled={importLoading}>
+                            {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Import'}
+                        </Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
