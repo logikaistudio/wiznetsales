@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     MessageCircle, Search, User, Clock, Send, MoreVertical,
-    Phone, Check, CheckCheck, PlusCircle, AlertCircle, FileText
+    Phone, Check, CheckCheck, PlusCircle, AlertCircle, FileText, Settings, X, Save
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
+import Input from '../components/ui/Input';
 
-// Mock Data for Chat Simulation (Since we don't have Real WA API connected yet)
+// Mock Data for Chat Simulation
 const MOCK_CHATS = [
     {
         id: 1,
@@ -41,11 +43,27 @@ const Omniflow = () => {
     const [chats, setChats] = useState(MOCK_CHATS);
     const [inputText, setInputText] = useState('');
 
+    // UI State
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isManualSearchOpen, setIsManualSearchOpen] = useState(false);
+
     // CRM & Ticket State
     const [customerData, setCustomerData] = useState(null);
     const [customerTickets, setCustomerTickets] = useState([]);
     const [activeTab, setActiveTab] = useState('info'); // info | tickets | create
     const [agents, setAgents] = useState([]);
+
+    // Data Search State
+    const [customers, setCustomers] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filteredCustomers, setFilteredCustomers] = useState([]);
+
+    // Config State
+    const [config, setConfig] = useState({
+        wa_api_url: '',
+        wa_api_token: '',
+        wa_device_id: ''
+    });
 
     // Create Ticket Form State
     const [ticketForm, setTicketForm] = useState({
@@ -57,59 +75,78 @@ const Omniflow = () => {
 
     const messagesEndRef = useRef(null);
 
-    // Initial Load - Fetch Agents
+    // Initial Load
     useEffect(() => {
-        const fetchAgents = async () => {
-            const res = await fetch('/api/helpdesk-agents');
-            const data = await res.json();
-            if (Array.isArray(data)) setAgents(data);
+        const fetchInit = async () => {
+            try {
+                // Fetch Agents
+                const resAgents = await fetch('/api/helpdesk-agents');
+                if (resAgents.ok) setAgents(await resAgents.json());
+
+                // Fetch Settings
+                const resSettings = await fetch('/api/settings');
+                if (resSettings.ok) setConfig(await resSettings.json());
+
+                // Fetch Customers for manual search cache
+                const resCust = await fetch('/api/customers');
+                if (resCust.ok) setCustomers(await resCust.json());
+
+            } catch (e) { console.error(e); }
         };
-        fetchAgents();
+        fetchInit();
     }, []);
 
-    // When chat selected, fetch customer details & tickets
+    // Filter customers logic
+    useEffect(() => {
+        if (searchQuery && customers.length > 0) {
+            const lower = searchQuery.toLowerCase();
+            setFilteredCustomers(
+                customers.filter(c =>
+                    (c.name && c.name.toLowerCase().includes(lower)) ||
+                    (c.customerId && c.customerId.toLowerCase().includes(lower)) ||
+                    (c.phone && c.phone.replace(/\D/g, '').includes(lower))
+                ).slice(0, 5)
+            );
+        } else {
+            setFilteredCustomers([]);
+        }
+    }, [searchQuery, customers]);
+
+    // When chat selected, fetch customer details
     useEffect(() => {
         if (selectedChat) {
-            fetchCustomerDetails(selectedChat.name); // Using name for demo matching
+            // Find matched customer
+            const matched = customers.find(c => c.name.toLowerCase().includes(selectedChat.name.toLowerCase().split(' ')[0]));
+            if (matched) {
+                setContextCustomer(matched);
+                // Auto-fill description with last message
+                setTicketForm(prev => ({ ...prev, description: selectedChat.lastMessage }));
+            } else {
+                setCustomerData(null);
+                setCustomerTickets([]);
+            }
             scrollToBottom();
         }
-    }, [selectedChat]);
+    }, [selectedChat, customers]);
+
+    const setContextCustomer = async (cust) => {
+        setCustomerData(cust);
+        // Fetch Tickets
+        try {
+            const resTickets = await fetch(`/api/tickets`);
+            if (resTickets.ok) {
+                const allTickets = await resTickets.json();
+                if (Array.isArray(allTickets)) {
+                    setCustomerTickets(allTickets.filter(t => t.customer_id === cust.id));
+                }
+            }
+        } catch (e) {
+            setCustomerTickets([]);
+        }
+    };
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    const fetchCustomerDetails = async (name) => {
-        // 1. Find Customer ID from Name (Simulating WA Number match)
-        const resCust = await fetch('/api/customers');
-        const custData = await resCust.json();
-        const matchedCust = custData.find(c => c.name.toLowerCase().includes(name.toLowerCase().split(' ')[0])); // Simple fuzzy match
-
-        if (matchedCust) {
-            setCustomerData(matchedCust);
-            // 2. Fetch Tickets for this Customer
-            try {
-                const resTickets = await fetch(`/ api / tickets`);
-                if (resTickets.ok) {
-                    const allTickets = await resTickets.json();
-                    if (Array.isArray(allTickets)) {
-                        const myTickets = allTickets.filter(t => t.customer_id === matchedCust.id);
-                        setCustomerTickets(myTickets);
-                    } else {
-                        setCustomerTickets([]);
-                    }
-                }
-            } catch (e) {
-                console.error("Failed to load tickets", e);
-                setCustomerTickets([]);
-            }
-
-            // Auto-fill description with last message
-            setTicketForm(prev => ({ ...prev, description: selectedChat.lastMessage }));
-        } else {
-            setCustomerData(null);
-            setCustomerTickets([]);
-        }
     };
 
     const handleSendMessage = (e) => {
@@ -142,11 +179,9 @@ const Omniflow = () => {
     };
 
     const handleCreateTicket = async () => {
-        if (!customerData) return alert("Customer data not linked!");
+        if (!customerData) return alert("Customer not selected context!");
 
-        // 1. Find Agent Name
         const agent = agents.find(a => a.id.toString() === ticketForm.assignedTo);
-
         const payload = {
             customerId: customerData.id,
             customerName: customerData.name,
@@ -155,7 +190,7 @@ const Omniflow = () => {
             priority: ticketForm.priority,
             assignedTo: ticketForm.assignedTo,
             assignedName: agent ? agent.name : '',
-            source: 'Omniflow WA'
+            source: selectedChat ? 'Omniflow WA' : 'Manual Entry'
         };
 
         try {
@@ -167,26 +202,50 @@ const Omniflow = () => {
 
             if (res.ok) {
                 alert("Ticket Created Successfully!");
-                fetchCustomerDetails(selectedChat.name); // Refresh list
-                setActiveTab('tickets'); // Switch view
-                // Optional: Auto send message to customer
-                // handleAutoReply(`Ticket #${ res.json().ticket_number } created.`);
+                setContextCustomer(customerData); // Refresh list
+                setActiveTab('tickets');
+                setTicketForm(prev => ({ ...prev, description: '' }));
             }
         } catch (err) {
             console.error(err);
         }
     };
 
+    const handleSaveSettings = async (e) => {
+        e.preventDefault();
+        try {
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+            setIsSettingsOpen(false);
+            alert("Settings saved!");
+        } catch (err) {
+            alert("Failed to save settings");
+        }
+    };
+
+    const handleSelectManualCustomer = (cust) => {
+        // Clear chat selection to focus on CRM mode
+        setSelectedChat(null);
+        setContextCustomer(cust);
+        setIsManualSearchOpen(false);
+        setSearchQuery('');
+    };
+
     return (
-        <div className="h-[calc(100vh-64px)] flex bg-gray-100 overflow-hidden">
+        <div className="h-[calc(100vh-64px)] flex bg-gray-100 overflow-hidden relative">
 
             {/* LEFT PANEL: CHAT LIST */}
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
                 <div className="p-4 border-b border-gray-200 bg-gray-50">
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="font-bold text-gray-800 text-lg">Chats</h2>
+                        <h2 className="font-bold text-gray-800 text-lg">Omniflow</h2>
                         <div className="flex gap-2">
-                            <Button size="xs" variant="ghost"><MoreVertical className="w-4 h-4" /></Button>
+                            <Button size="xs" variant="ghost" onClick={() => setIsSettingsOpen(true)} title="WA Settings">
+                                <Settings className="w-4 h-4 text-gray-600" />
+                            </Button>
                         </div>
                     </div>
                     <div className="relative">
@@ -223,10 +282,18 @@ const Omniflow = () => {
                             </div>
                         </div>
                     ))}
+                    <div className="p-4 pt-2">
+                        <div
+                            onClick={() => setIsManualSearchOpen(true)}
+                            className="text-center p-3 border border-dashed border-gray-300 rounded-lg text-gray-500 text-sm cursor-pointer hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Search className="w-4 h-4" /> Manual Customer Search
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* MIDDLE PANEL: CHAT ROOM */}
+            {/* MIDDLE PANEL: CHAT ROOM / EMPTY STATE */}
             <div className="flex-1 flex flex-col bg-[#e5ddd5] relative">
                 {selectedChat ? (
                     <>
@@ -242,11 +309,6 @@ const Omniflow = () => {
                                         <Phone className="w-3 h-3" /> {selectedChat.phone}
                                     </p>
                                 </div>
-                            </div>
-                            <div className="flex gap-2">
-                                <Button size="sm" variant="outline" className="text-gray-600">
-                                    <Search className="w-4 h-4" />
-                                </Button>
                             </div>
                         </div>
 
@@ -290,16 +352,31 @@ const Omniflow = () => {
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-500 bg-gray-50">
-                        <MessageCircle className="w-16 h-16 text-gray-300 mb-4" />
-                        <p className="text-lg font-medium">Select a chat to start messaging</p>
-                        <p className="text-sm">Manage ticket support directly from chat</p>
+                        {customerData ? (
+                            <div className="bg-white p-6 rounded-xl shadow-sm text-center max-w-sm">
+                                <User className="w-16 h-16 text-primary mx-auto mb-4 bg-primary/10 p-3 rounded-full" />
+                                <h3 className="text-lg font-bold text-gray-900 mb-1">{customerData.name}</h3>
+                                <p className="text-sm text-gray-500 mb-4">Manual Context Mode</p>
+                                <div className="text-xs bg-gray-100 p-2 rounded">
+                                    Use the right panel to manage tickets for this customer.
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <MessageCircle className="w-16 h-16 text-gray-300 mb-4" />
+                                <p className="text-lg font-medium">Select a chat or Search Manual</p>
+                                <Button variant="outline" className="mt-4" onClick={() => setIsManualSearchOpen(true)}>
+                                    <Search className="w-4 h-4 mr-2" /> Manual Customer Search
+                                </Button>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
 
             {/* RIGHT PANEL: CONTEXT & TICKETING */}
             <div className="w-96 bg-white border-l border-gray-200 flex flex-col h-full overflow-hidden">
-                {selectedChat && customerData ? (
+                {customerData ? (
                     <>
                         {/* Tabs */}
                         <div className="flex border-b border-gray-200">
@@ -346,8 +423,8 @@ const Omniflow = () => {
                                             <p className="text-sm text-gray-800">{customerData.address}, {customerData.kabupaten}</p>
                                         </div>
                                         <div className="bg-gray-50 p-3 rounded-lg">
-                                            <p className="text-xs text-gray-500 uppercase font-medium mb-1">ODP / Port</p>
-                                            <p className="text-sm text-gray-800">- / -</p>
+                                            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Phone</p>
+                                            <p className="text-sm text-gray-800">{customerData.phone || '-'}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -416,7 +493,6 @@ const Omniflow = () => {
                                             value={ticketForm.description}
                                             onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })}
                                         />
-                                        <p className="text-[10px] text-gray-400 mt-1">*Auto-filled from chat</p>
                                     </div>
                                     <div>
                                         <label className="text-xs font-semibold text-gray-700">Assign To</label>
@@ -439,21 +515,86 @@ const Omniflow = () => {
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-gray-500">
                         {selectedChat ? (
-                            <>
-                                <AlertCircle className="w-12 h-12 text-yellow-400 mb-3" />
+                            <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 shadow-sm max-w-xs">
+                                <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
                                 <h3 className="font-bold text-gray-800 mb-1">Unlinked Customer</h3>
-                                <p className="text-sm">Cannot find customer data matching "{selectedChat.name}"</p>
-                                <Button size="sm" variant="outline" className="mt-4">Search Manual</Button>
-                            </>
+                                <p className="text-xs text-gray-600 mb-3">
+                                    Number {selectedChat.phone} not found in database.
+                                </p>
+                                <Button size="sm" variant="outline" className="w-full" onClick={() => setIsManualSearchOpen(true)}>Manual Search</Button>
+                            </div>
                         ) : (
                             <>
                                 <User className="w-12 h-12 text-gray-200 mb-3" />
-                                <p className="text-sm">Select a chat to view customer details & tickets</p>
+                                <p className="text-sm">Select a chat or use Manual Search to manage tickets.</p>
                             </>
                         )}
                     </div>
                 )}
             </div>
+
+            {/* SETTINGS MODAL */}
+            <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="WhatsApp Configuration">
+                <form onSubmit={handleSaveSettings} className="space-y-4">
+                    <Input
+                        label="WA API Endpoint URL"
+                        placeholder="https://api.whatsapp... or localhost:3000"
+                        value={config.wa_api_url || ''}
+                        onChange={e => setConfig({ ...config, wa_api_url: e.target.value })}
+                    />
+                    <Input
+                        label="API Token / Key"
+                        type="password"
+                        placeholder="Secret Token"
+                        value={config.wa_api_token || ''}
+                        onChange={e => setConfig({ ...config, wa_api_token: e.target.value })}
+                    />
+                    <Input
+                        label="Device Phone Number"
+                        placeholder="62812..."
+                        value={config.wa_device_id || ''}
+                        onChange={e => setConfig({ ...config, wa_device_id: e.target.value })}
+                    />
+                    <div className="flex justify-end pt-4">
+                        <Button type="submit"><Save className="w-4 h-4 mr-2" /> Save Configuration</Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* MANUAL SEARCH MODAL */}
+            <Modal isOpen={isManualSearchOpen} onClose={() => setIsManualSearchOpen(false)} title="Manual Customer Lookup">
+                <div className="space-y-4">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                        <Input
+                            placeholder="Type Name, ID or Phone number..."
+                            className="pl-9"
+                            autoFocus
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto border border-gray-100 rounded-lg">
+                        {filteredCustomers.length > 0 ? filteredCustomers.map(c => (
+                            <div
+                                key={c.id}
+                                onClick={() => handleSelectManualCustomer(c)}
+                                className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-0 flex justify-between items-center"
+                            >
+                                <div>
+                                    <p className="font-medium text-gray-900">{c.name}</p>
+                                    <p className="text-xs text-gray-500">{c.customerId} • {c.address}</p>
+                                </div>
+                                <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600">{c.phone}</span>
+                            </div>
+                        )) : (
+                            <div className="p-4 text-center text-gray-400">
+                                {searchQuery ? 'No customers found' : 'Start typing to search...'}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };
