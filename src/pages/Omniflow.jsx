@@ -1,621 +1,449 @@
-import React, { useState, useEffect } from 'react';
-import { MessageCircle, Search, Plus, User, Clock, CheckCircle, AlertCircle, RefreshCw, X, Save, Send, Phone, ArrowRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
-import Modal from '../components/ui/Modal';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    MessageCircle, Search, User, Clock, Send, MoreVertical,
+    Phone, Check, CheckDouble, PlusCircle, AlertCircle, FileText
+} from 'lucide-react';
 import { cn } from '../lib/utils';
+import Button from '../components/ui/Button';
 
-const TicketCard = ({ ticket, onClick }) => {
-    const statusColors = {
-        'Open': 'bg-red-50 text-red-700 border-red-100',
-        'In Progress': 'bg-blue-50 text-blue-700 border-blue-100',
-        'Solved': 'bg-green-50 text-green-700 border-green-100',
-        'Closed': 'bg-gray-50 text-gray-700 border-gray-100'
-    };
-
-    return (
-        <motion.div
-            layout
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={() => onClick(ticket)}
-            className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative group"
-        >
-            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ArrowRight className="w-5 h-5 text-gray-400" />
-            </div>
-
-            <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                        {ticket.ticket_number}
-                    </span>
-                    <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", statusColors[ticket.status])}>
-                        {ticket.status}
-                    </span>
-                </div>
-            </div>
-
-            <div className="mb-1">
-                <h3 className="font-semibold text-gray-900">{ticket.customer_name || 'Unknown Customer'}</h3>
-                {ticket.customer_phone && <p className="text-xs text-gray-500">{ticket.customer_phone}</p>}
-            </div>
-
-            <p className="text-sm text-gray-600 mb-4 line-clamp-2 mt-2">{ticket.description}</p>
-
-            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <User className="w-3 h-3" />
-                    <span>{ticket.assigned_name || 'Unassigned'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <Clock className="w-3 h-3" />
-                    <span>{new Date(ticket.created_at).toLocaleDateString()}</span>
-                </div>
-            </div>
-        </motion.div>
-    );
-};
-
-const ActivityItem = ({ activity }) => {
-    return (
-        <div className="flex gap-3">
-            <div className="flex flex-col items-center">
-                <div className={cn(
-                    "w-2 h-2 rounded-full mt-2",
-                    activity.activity_type === 'status_change' ? "bg-blue-500" : "bg-gray-400"
-                )} />
-                <div className="w-0.5 flex-1 bg-gray-100 my-1" />
-            </div>
-            <div className="pb-6 flex-1">
-                <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-medium text-gray-900">{activity.created_by}</span>
-                        <span className="text-xs text-gray-500">
-                            {new Date(activity.created_at).toLocaleString()}
-                        </span>
-                    </div>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{activity.content}</p>
-                </div>
-            </div>
-        </div>
-    );
-};
+// Mock Data for Chat Simulation (Since we don't have Real WA API connected yet)
+const MOCK_CHATS = [
+    {
+        id: 1,
+        customerId: 101,
+        name: 'Budi Santoso',
+        phone: '6281234567890',
+        lastMessage: 'Internet saya merah los min, tolong dicek',
+        time: '10:30',
+        unread: 2,
+        messages: [
+            { id: 1, text: 'Halo selamat siang', sender: 'customer', time: '10:28' },
+            { id: 2, text: 'Internet saya merah los min, tolong dicek', sender: 'customer', time: '10:30' }
+        ]
+    },
+    {
+        id: 2,
+        customerId: 102,
+        name: 'Siti Aminah',
+        phone: '6285678901234',
+        lastMessage: 'Pembayaran bulan ini sudah masuk belum?',
+        time: 'Yesterday',
+        unread: 0,
+        messages: [
+            { id: 1, text: 'Pembayaran bulan ini sudah masuk belum?', sender: 'customer', time: 'Yesterday' }
+        ]
+    }
+];
 
 const Omniflow = () => {
-    // Data States
-    const [tickets, setTickets] = useState([]);
-    const [customers, setCustomers] = useState([]);
+    // Layout State
+    const [selectedChat, setSelectedChat] = useState(null);
+    const [chats, setChats] = useState(MOCK_CHATS);
+    const [inputText, setInputText] = useState('');
+
+    // CRM & Ticket State
+    const [customerData, setCustomerData] = useState(null);
+    const [customerTickets, setCustomerTickets] = useState([]);
+    const [activeTab, setActiveTab] = useState('info'); // info | tickets | create
     const [agents, setAgents] = useState([]);
 
-    // UI States
-    const [isLoading, setIsLoading] = useState(false);
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-    const [selectedTicket, setSelectedTicket] = useState(null);
-    const [ticketActivities, setTicketActivities] = useState([]);
-    const [filterStatus, setFilterStatus] = useState('All');
-    const [searchTerm, setSearchTerm] = useState('');
-
-    // Form States
-    const [formData, setFormData] = useState({
-        customerId: '',
-        customerName: '',
+    // Create Ticket Form State
+    const [ticketForm, setTicketForm] = useState({
         category: 'Gangguan Internet',
-        description: '',
-        source: 'WhatsApp',
         priority: 'Medium',
-        assignedTo: '',
-        assignedName: ''
+        description: '',
+        assignedTo: ''
     });
 
-    const [commentText, setCommentText] = useState('');
+    const messagesEndRef = useRef(null);
 
-    // Auto-search customers
-    const [customerSearch, setCustomerSearch] = useState('');
-    const [filteredCustomers, setFilteredCustomers] = useState([]);
-    const [selectedCustomerInfo, setSelectedCustomerInfo] = useState(null);
-
+    // Initial Load - Fetch Agents
     useEffect(() => {
-        fetchTickets();
-        fetchAgents();
-        fetchCustomers();
-    }, []);
-
-    useEffect(() => {
-        if (customerSearch && customers.length > 0) {
-            const searchLower = customerSearch.toLowerCase();
-            setFilteredCustomers(
-                customers.filter(c =>
-                    (c.name && c.name.toLowerCase().includes(searchLower)) ||
-                    (c.customerId && c.customerId.toLowerCase().includes(searchLower)) ||
-                    (c.phone && c.phone.replace(/\D/g, '').includes(searchLower)) // Search by formatted phone
-                ).slice(0, 5)
-            );
-        } else {
-            setFilteredCustomers([]);
-        }
-    }, [customerSearch, customers]);
-
-    const fetchTickets = async () => {
-        setIsLoading(true);
-        try {
-            const res = await fetch(`/api/tickets?status=${filterStatus}`);
-            const data = await res.json();
-            if (Array.isArray(data)) setTickets(data);
-        } catch (error) {
-            console.error('Error fetching tickets:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const fetchUniqueTicket = async (id) => {
-        // Fetch updated ticket data
-        const res = await fetch('/api/tickets');
-        const data = await res.json();
-        const updated = data.find(t => t.id === id);
-        if (updated) setSelectedTicket(updated);
-        return updated;
-    };
-
-    const fetchAgents = async () => {
-        try {
+        const fetchAgents = async () => {
             const res = await fetch('/api/helpdesk-agents');
             const data = await res.json();
             if (Array.isArray(data)) setAgents(data);
-        } catch (error) {
-            console.error('Error fetching agents:', error);
+        };
+        fetchAgents();
+    }, []);
+
+    // When chat selected, fetch customer details & tickets
+    useEffect(() => {
+        if (selectedChat) {
+            fetchCustomerDetails(selectedChat.name); // Using name for demo matching
+            scrollToBottom();
+        }
+    }, [selectedChat]);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    const fetchCustomerDetails = async (name) => {
+        // 1. Find Customer ID from Name (Simulating WA Number match)
+        const resCust = await fetch('/api/customers');
+        const custData = await resCust.json();
+        const matchedCust = custData.find(c => c.name.toLowerCase().includes(name.toLowerCase().split(' ')[0])); // Simple fuzzy match
+
+        if (matchedCust) {
+            setCustomerData(matchedCust);
+            // 2. Fetch Tickets for this Customer
+            // We need to filter tickets by customer_name or id from the all tickets endpoint (or creating a specific endpoint is better)
+            const resTickets = await fetch(`/api/tickets`);
+            const allTickets = await resTickets.json();
+            const myTickets = allTickets.filter(t => t.customer_id === matchedCust.id);
+            setCustomerTickets(myTickets);
+
+            // Auto-fill description with last message
+            setTicketForm(prev => ({ ...prev, description: selectedChat.lastMessage }));
+        } else {
+            setCustomerData(null);
+            setCustomerTickets([]);
         }
     };
 
-    const fetchCustomers = async () => {
-        try {
-            const res = await fetch('/api/customers');
-            const data = await res.json();
-            if (Array.isArray(data)) setCustomers(data);
-        } catch (error) {
-            console.error('Error fetching customers:', error);
-        }
-    };
-
-    const fetchActivities = async (ticketId) => {
-        try {
-            const res = await fetch(`/api/tickets/${ticketId}/activities`);
-            const data = await res.json();
-            setTicketActivities(data);
-        } catch (error) {
-            console.error('Error fetching activities:', error);
-        }
-    };
-
-    // Reset form helper
-    const resetForm = () => {
-        setIsCreateModalOpen(false);
-        setFormData({
-            customerId: '',
-            customerName: '',
-            category: 'Gangguan Internet',
-            description: '',
-            source: 'WhatsApp',
-            priority: 'Medium',
-            assignedTo: '',
-            assignedName: ''
-        });
-        setCustomerSearch('');
-        setSelectedCustomerInfo(null);
-    };
-
-    const handleCreateTicket = async (e) => {
+    const handleSendMessage = (e) => {
         e.preventDefault();
+        if (!inputText.trim()) return;
+
+        const newMessage = {
+            id: Date.now(),
+            text: inputText,
+            sender: 'me',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        const updatedChats = chats.map(chat => {
+            if (chat.id === selectedChat.id) {
+                return {
+                    ...chat,
+                    messages: [...chat.messages, newMessage],
+                    lastMessage: inputText,
+                    time: 'Now'
+                };
+            }
+            return chat;
+        });
+
+        setChats(updatedChats);
+        setSelectedChat(prev => ({ ...prev, messages: [...prev.messages, newMessage] }));
+        setInputText('');
+        setTimeout(scrollToBottom, 100);
+    };
+
+    const handleCreateTicket = async () => {
+        if (!customerData) return alert("Customer data not linked!");
+
+        // 1. Find Agent Name
+        const agent = agents.find(a => a.id.toString() === ticketForm.assignedTo);
+
+        const payload = {
+            customerId: customerData.id,
+            customerName: customerData.name,
+            category: ticketForm.category,
+            description: ticketForm.description,
+            priority: ticketForm.priority,
+            assignedTo: ticketForm.assignedTo,
+            assignedName: agent ? agent.name : '',
+            source: 'Omniflow WA'
+        };
+
         try {
             const res = await fetch('/api/tickets', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             });
+
             if (res.ok) {
-                resetForm();
-                fetchTickets();
+                alert("Ticket Created Successfully!");
+                fetchCustomerDetails(selectedChat.name); // Refresh list
+                setActiveTab('tickets'); // Switch view
+                // Optional: Auto send message to customer
+                // handleAutoReply(`Ticket #${res.json().ticket_number} created.`);
             }
-        } catch (error) {
-            alert('Failed to create ticket');
+        } catch (err) {
+            console.error(err);
         }
     };
-
-    const handleUpdateStatus = async (newStatus) => {
-        if (!confirm(`Mark ticket as ${newStatus}?`)) return;
-        try {
-            await fetch(`/api/tickets/${selectedTicket.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus, updatedBy: 'Admin' }) // Replace Admin with real user later
-            });
-            await fetchUniqueTicket(selectedTicket.id);
-            await fetchActivities(selectedTicket.id);
-            fetchTickets();
-        } catch (error) {
-            alert('Failed to update status');
-        }
-    };
-
-    const handleAddComment = async (e) => {
-        e.preventDefault();
-        if (!commentText.trim()) return;
-
-        try {
-            await fetch(`/api/tickets/${selectedTicket.id}/activities`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    activityType: 'note',
-                    content: commentText,
-                    createdBy: 'Admin'
-                })
-            });
-            setCommentText('');
-            fetchActivities(selectedTicket.id);
-        } catch (error) {
-            alert('Failed to add comment');
-        }
-    };
-
-    const openTicketDetail = (ticket) => {
-        setSelectedTicket(ticket);
-        fetchActivities(ticket.id);
-        setIsDetailModalOpen(true);
-    };
-
-    const openWhatsApp = (phone) => {
-        if (!phone) return alert('No phone number available');
-        let number = phone.replace(/\D/g, '');
-        if (number.startsWith('0')) number = '62' + number.slice(1);
-        window.open(`https://wa.me/${number}`, '_blank');
-    };
-
-    const selectCustomer = (cust) => {
-        setFormData({
-            ...formData,
-            customerId: cust.id,
-            customerName: cust.name
-        });
-        setCustomerSearch(cust.name);
-        setSelectedCustomerInfo(cust); // Save for display
-        setFilteredCustomers([]);
-    };
-
-    const filteredTickets = tickets.filter(t =>
-        (filterStatus === 'All' || t.status === filterStatus) &&
-        (t.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.ticket_number?.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
 
     return (
-        <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Omniflow Support</h1>
-                    <p className="text-gray-500 mt-1">Helpdesk & Ticket Management</p>
-                </div>
-                <Button onClick={() => setIsCreateModalOpen(true)}>
-                    <MessageCircle className="w-4 h-4 mr-2" /> New Ticket (WA)
-                </Button>
-            </div>
+        <div className="h-[calc(100vh-64px)] flex bg-gray-100 overflow-hidden">
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {['Open', 'In Progress', 'Solved', 'Total'].map((stat, idx) => {
-                    const count = stat === 'Total' ? tickets.length : tickets.filter(t => t.status === stat).length;
-                    const colors = ['text-red-600', 'text-blue-600', 'text-green-600', 'text-gray-800'];
-                    return (
-                        <div key={stat} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <p className="text-gray-500 text-xs font-medium uppercase">{stat === 'Total' ? 'Total Tickets' : stat}</p>
-                            <p className={cn("text-2xl font-bold mt-1", colors[idx])}>{count}</p>
+            {/* LEFT PANEL: CHAT LIST */}
+            <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+                <div className="p-4 border-b border-gray-200 bg-gray-50">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="font-bold text-gray-800 text-lg">Chats</h2>
+                        <div className="flex gap-2">
+                            <Button size="xs" variant="ghost"><MoreVertical className="w-4 h-4" /></Button>
                         </div>
-                    );
-                })}
-            </div>
-
-            {/* Filters & Search */}
-            <div className="flex flex-col md:flex-row gap-4 items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                <div className="relative flex-1 w-full">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search tickets by ID or Customer..."
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="pl-9 pr-4 py-2 w-full rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                    />
+                    </div>
+                    <div className="relative">
+                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                        <input
+                            type="text"
+                            placeholder="Search chats..."
+                            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                    </div>
                 </div>
-                <div className="flex gap-2 w-full md:w-auto overflow-x-auto">
-                    {['All', 'Open', 'In Progress', 'Solved'].map(status => (
-                        <button
-                            key={status}
-                            onClick={() => setFilterStatus(status)}
+
+                <div className="flex-1 overflow-y-auto">
+                    {chats.map(chat => (
+                        <div
+                            key={chat.id}
+                            onClick={() => setSelectedChat(chat)}
                             className={cn(
-                                "px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
-                                filterStatus === status
-                                    ? "bg-primary text-white"
-                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                "p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors",
+                                selectedChat?.id === chat.id && "bg-blue-50 border-blue-100"
                             )}
                         >
-                            {status}
-                        </button>
+                            <div className="flex justify-between mb-1">
+                                <span className="font-semibold text-gray-900 text-sm truncate">{chat.name}</span>
+                                <span className="text-xs text-gray-400">{chat.time}</span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <p className="text-xs text-gray-500 truncate max-w-[180px]">{chat.lastMessage}</p>
+                                {chat.unread > 0 && (
+                                    <span className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                        {chat.unread}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     ))}
-                    <button onClick={fetchTickets} className="p-2 text-gray-500 hover:text-primary rounded-lg hover:bg-gray-100">
-                        <RefreshCw className="w-4 h-4" />
-                    </button>
                 </div>
             </div>
 
-            {/* Ticket Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <AnimatePresence>
-                    {filteredTickets.map(ticket => (
-                        <TicketCard key={ticket.id} ticket={ticket} onClick={openTicketDetail} />
-                    ))}
-                </AnimatePresence>
-                {filteredTickets.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-dashed border-gray-200">
-                        <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                        <p>No tickets found matching your criteria</p>
+            {/* MIDDLE PANEL: CHAT ROOM */}
+            <div className="flex-1 flex flex-col bg-[#e5ddd5] relative">
+                {selectedChat ? (
+                    <>
+                        {/* Chat Header */}
+                        <div className="bg-white p-3 border-b border-gray-200 flex justify-between items-center shadow-sm z-10">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                                    <User className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900 leading-tight">{selectedChat.name}</h3>
+                                    <p className="text-xs text-green-600 flex items-center gap-1">
+                                        <Phone className="w-3 h-3" /> {selectedChat.phone}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button size="sm" variant="outline" className="text-gray-600">
+                                    <Search className="w-4 h-4" />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Messages Area */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat">
+                            {selectedChat.messages.map(msg => (
+                                <div key={msg.id} className={cn("flex", msg.sender === 'me' ? "justify-end" : "justify-start")}>
+                                    <div className={cn(
+                                        "max-w-[70%] p-3 rounded-lg shadow-sm text-sm relative",
+                                        msg.sender === 'me' ? "bg-[#d9fdd3] rounded-tr-none" : "bg-white rounded-tl-none"
+                                    )}>
+                                        <p className="text-gray-800 mb-1">{msg.text}</p>
+                                        <div className="flex justify-end items-center gap-1">
+                                            <span className="text-[10px] text-gray-500">{msg.time}</span>
+                                            {msg.sender === 'me' && <CheckDouble className="w-3 h-3 text-blue-500" />}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input Area */}
+                        <div className="p-3 bg-white border-t border-gray-200">
+                            <form onSubmit={handleSendMessage} className="flex gap-2">
+                                <Button type="button" variant="ghost" className="text-gray-500">
+                                    <PlusCircle className="w-6 h-6" />
+                                </Button>
+                                <input
+                                    type="text"
+                                    value={inputText}
+                                    onChange={(e) => setInputText(e.target.value)}
+                                    placeholder="Type a message..."
+                                    className="flex-1 bg-gray-100 border-0 rounded-lg px-4 focus:ring-1 focus:ring-gray-300"
+                                />
+                                <Button type="submit" size="icon" className={cn("rounded-full", !inputText.trim() && "opacity-50")}>
+                                    <Send className="w-5 h-5" />
+                                </Button>
+                            </form>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500 bg-gray-50">
+                        <MessageCircle className="w-16 h-16 text-gray-300 mb-4" />
+                        <p className="text-lg font-medium">Select a chat to start messaging</p>
+                        <p className="text-sm">Manage ticket support directly from chat</p>
                     </div>
                 )}
             </div>
 
-            {/* DETAIL MODAL */}
-            {selectedTicket && (
-                <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Ticket Details" className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-                    <div className="flex flex-col md:flex-row h-full overflow-hidden">
-                        {/* LEFT: INFO */}
-                        <div className="md:w-1/3 p-1 overflow-y-auto border-b md:border-b-0 md:border-r border-gray-100 pr-4">
-                            <div className="space-y-4">
-                                <div>
-                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Status</span>
-                                    <div className="mt-1 flex flex-wrap gap-2">
-                                        <select
-                                            value={selectedTicket.status}
-                                            onChange={(e) => handleUpdateStatus(e.target.value)}
-                                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                                        >
-                                            <option value="Open">Open</option>
-                                            <option value="In Progress">In Progress</option>
-                                            <option value="Solved">Solved</option>
-                                            <option value="Closed">Closed</option>
-                                        </select>
-                                    </div>
-                                </div>
+            {/* RIGHT PANEL: CONTEXT & TICKETING */}
+            <div className="w-96 bg-white border-l border-gray-200 flex flex-col h-full overflow-hidden">
+                {selectedChat && customerData ? (
+                    <>
+                        {/* Tabs */}
+                        <div className="flex border-b border-gray-200">
+                            {[
+                                { id: 'info', label: 'Info', icon: User },
+                                { id: 'tickets', label: 'Tickets', icon: FileText },
+                                { id: 'create', label: 'New Ticket', icon: PlusCircle }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={cn(
+                                        "flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors",
+                                        activeTab === tab.id
+                                            ? "border-primary text-primary bg-primary/5"
+                                            : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                                    )}
+                                >
+                                    <tab.icon className="w-4 h-4" />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
 
-                                <div>
-                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Customer</span>
-                                    <div className="mt-1">
-                                        <p className="font-semibold text-gray-900">{selectedTicket.customer_name}</p>
-                                        <div className="flex items-center mt-1 space-x-2">
-                                            <Button
-                                                size="xs"
-                                                variant="outline"
-                                                className="text-green-600 border-green-200 w-full justify-center"
-                                                onClick={() => openWhatsApp(selectedTicket.customer_phone)}
-                                            >
-                                                <MessageCircle className="w-3 h-3 mr-1" /> Chat WA
-                                            </Button>
+                        {/* Tab Content */}
+                        <div className="flex-1 overflow-y-auto p-5">
+                            {activeTab === 'info' && (
+                                <div className="space-y-6">
+                                    <div className="text-center">
+                                        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3 text-primary">
+                                            <span className="text-2xl font-bold">{customerData.name.charAt(0)}</span>
+                                        </div>
+                                        <h3 className="font-bold text-gray-900 text-lg">{customerData.name}</h3>
+                                        <p className="text-sm text-gray-500">{customerData.customerId} • {customerData.status || 'Active'}</p>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="bg-gray-50 p-3 rounded-lg">
+                                            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Package Plan</p>
+                                            <p className="text-sm font-semibold text-gray-800">{customerData.productName || 'N/A'}</p>
+                                        </div>
+                                        <div className="bg-gray-50 p-3 rounded-lg">
+                                            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Installation Address</p>
+                                            <p className="text-sm text-gray-800">{customerData.address}, {customerData.kabupaten}</p>
+                                        </div>
+                                        <div className="bg-gray-50 p-3 rounded-lg">
+                                            <p className="text-xs text-gray-500 uppercase font-medium mb-1">ODP / Port</p>
+                                            <p className="text-sm text-gray-800">- / -</p>
                                         </div>
                                     </div>
                                 </div>
+                            )}
 
-                                <div>
-                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Details</span>
-                                    <div className="mt-2 text-sm space-y-2 text-gray-600 bg-gray-50 p-3 rounded-lg">
-                                        <p><span className="font-medium">ID:</span> {selectedTicket.ticket_number}</p>
-                                        <p><span className="font-medium">Category:</span> {selectedTicket.category}</p>
-                                        <p><span className="font-medium">Priority:</span> {selectedTicket.priority}</p>
-                                        <p><span className="font-medium">Created:</span> {new Date(selectedTicket.created_at).toLocaleString()}</p>
-                                        <p><span className="font-medium">Source:</span> {selectedTicket.source}</p>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Assignee</span>
-                                    <p className="mt-1 text-sm text-gray-900 flex items-center gap-2">
-                                        <User className="w-4 h-4 text-gray-400" />
-                                        {selectedTicket.assigned_name || 'Unassigned'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* RIGHT: TIMELINE */}
-                        <div className="md:w-2/3 pl-0 md:pl-6 flex flex-col h-[60vh] md:h-auto pt-4 md:pt-0">
-                            <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <Clock className="w-4 h-4 text-gray-500" /> Activity History
-                            </h3>
-
-                            {/* Scrollable Timeline */}
-                            <div className="flex-1 overflow-y-auto pr-2 space-y-4 mb-4">
+                            {activeTab === 'tickets' && (
                                 <div className="space-y-4">
-                                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                        <p className="text-xs text-blue-800 font-semibold mb-1">Issue Description:</p>
-                                        <p className="text-sm text-blue-900">{selectedTicket.description}</p>
-                                    </div>
-
-                                    {ticketActivities.map(activity => (
-                                        <ActivityItem key={activity.id} activity={activity} />
-                                    ))}
-
-                                    {ticketActivities.length === 0 && (
-                                        <p className="text-center text-gray-400 text-sm py-4">No activity upgrades yet.</p>
+                                    <h3 className="text-sm font-bold text-gray-900 mb-2">Active Tickets ({customerTickets.length})</h3>
+                                    {customerTickets.length > 0 ? customerTickets.map(ticket => (
+                                        <div key={ticket.id} className="border border-gray-200 rounded-lg p-3 hover:shadow-sm">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{ticket.ticket_number}</span>
+                                                <span className={cn(
+                                                    "text-[10px] uppercase font-bold px-1.5 py-0.5 rounded",
+                                                    ticket.status === 'Open' ? "bg-red-100 text-red-600" :
+                                                        ticket.status === 'Solved' ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"
+                                                )}>{ticket.status}</span>
+                                            </div>
+                                            <p className="text-sm text-gray-800 font-medium mb-1">{ticket.category}</p>
+                                            <p className="text-xs text-gray-500 line-clamp-2">{ticket.description}</p>
+                                            <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400 flex justify-between">
+                                                <span>{new Date(ticket.created_at).toLocaleDateString()}</span>
+                                                <span>{ticket.assigned_name}</span>
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <FileText className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                                            <p className="text-sm">No ticket history</p>
+                                        </div>
                                     )}
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Comment Input */}
-                            <div className="border-t pt-4">
-                                <form onSubmit={handleAddComment} className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={commentText}
-                                        onChange={e => setCommentText(e.target.value)}
-                                        placeholder="Type a note or update..."
-                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                    />
-                                    <Button type="submit" size="sm" disabled={!commentText.trim()}>
-                                        <Send className="w-4 h-4" />
-                                    </Button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </Modal>
-            )}
-
-            {/* CREATE MODAL */}
-            <Modal isOpen={isCreateModalOpen} onClose={resetForm} title="New Support Ticket (WA)" className="max-w-2xl">
-                <form onSubmit={handleCreateTicket} className="space-y-6">
-                    <div className="space-y-1.5 relative">
-                        <label className="text-sm font-medium text-gray-700">Find Customer (Copy WA Number / Name / ID)</label>
-                        <div className="relative">
-                            <div className="flex gap-2">
-                                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
-                                <input
-                                    type="text"
-                                    value={customerSearch}
-                                    onChange={e => {
-                                        setCustomerSearch(e.target.value);
-                                        if (e.target.value === '') {
-                                            setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-                                            setSelectedCustomerInfo(null);
-                                        }
-                                    }}
-                                    className="w-full pl-10 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                    placeholder="Paste phone number here (e.g. 0812xxx)..."
-                                    autoFocus
-                                />
-                                {selectedCustomerInfo && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setCustomerSearch('');
-                                            setFormData(prev => ({ ...prev, customerId: '', customerName: '' }));
-                                            setSelectedCustomerInfo(null);
-                                        }}
-                                        className="text-gray-400 hover:text-red-500"
-                                    >
-                                        <X className="w-5 h-5" />
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* Search Results Dropdown */}
-                            {filteredCustomers.length > 0 && !selectedCustomerInfo && (
-                                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                    {filteredCustomers.map(c => (
-                                        <div
-                                            key={c.id}
-                                            className="px-4 py-3 hover:bg-gray-50 cursor-pointer text-sm border-b last:border-0"
-                                            onClick={() => selectCustomer(c)}
+                            {activeTab === 'create' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-700">Category</label>
+                                        <select
+                                            className="w-full mt-1 border border-gray-300 rounded-md text-sm p-2"
+                                            value={ticketForm.category}
+                                            onChange={e => setTicketForm({ ...ticketForm, category: e.target.value })}
                                         >
-                                            <div className="flex justify-between">
-                                                <span className="font-medium text-gray-900">{c.name}</span>
-                                                <span className="text-gray-500 text-xs">{c.phone}</span>
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-0.5">{c.customerId} • {c.address}</div>
-                                        </div>
-                                    ))}
+                                            <option>Gangguan Internet</option>
+                                            <option>Billing Issue</option>
+                                            <option>New Installation</option>
+                                            <option>Other</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-700">Priority</label>
+                                        <select
+                                            className="w-full mt-1 border border-gray-300 rounded-md text-sm p-2"
+                                            value={ticketForm.priority}
+                                            onChange={e => setTicketForm({ ...ticketForm, priority: e.target.value })}
+                                        >
+                                            <option>Low</option>
+                                            <option>Medium</option>
+                                            <option>High</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-700">Description</label>
+                                        <textarea
+                                            className="w-full mt-1 border border-gray-300 rounded-md text-sm p-2 h-24"
+                                            value={ticketForm.description}
+                                            onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })}
+                                        />
+                                        <p className="text-[10px] text-gray-400 mt-1">*Auto-filled from chat</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-700">Assign To</label>
+                                        <select
+                                            className="w-full mt-1 border border-gray-300 rounded-md text-sm p-2"
+                                            value={ticketForm.assignedTo}
+                                            onChange={e => setTicketForm({ ...ticketForm, assignedTo: e.target.value })}
+                                        >
+                                            <option value="">-- Select CS --</option>
+                                            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <Button onClick={handleCreateTicket} className="w-full mt-2">
+                                        Create Ticket
+                                    </Button>
                                 </div>
                             )}
                         </div>
-
-                        {/* Selected Customer Snapshot Card */}
-                        {selectedCustomerInfo && (
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mt-2 flex gap-3 items-start animate-in fade-in slide-in-from-top-2 duration-200">
-                                <div className="bg-white p-2 rounded-full shadow-sm">
-                                    <User className="w-4 h-4 text-blue-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-bold text-blue-900">{selectedCustomerInfo.name}</p>
-                                    <p className="text-xs text-blue-700">{selectedCustomerInfo.address}, {selectedCustomerInfo.kabupaten}</p>
-                                    <p className="text-xs text-blue-600 mt-1 flex gap-2">
-                                        <span className="bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">
-                                            {selectedCustomerInfo.productName || 'No Plan'}
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <Phone className="w-3 h-3" /> {selectedCustomerInfo.phone}
-                                        </span>
-                                    </p>
-                                </div>
-                            </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-gray-500">
+                        {selectedChat ? (
+                            <>
+                                <AlertCircle className="w-12 h-12 text-yellow-400 mb-3" />
+                                <h3 className="font-bold text-gray-800 mb-1">Unlinked Customer</h3>
+                                <p className="text-sm">Cannot find customer data matching "{selectedChat.name}"</p>
+                                <Button size="sm" variant="outline" className="mt-4">Search Manual</Button>
+                            </>
+                        ) : (
+                            <>
+                                <User className="w-12 h-12 text-gray-200 mb-3" />
+                                <p className="text-sm">Select a chat to view customer details & tickets</p>
+                            </>
                         )}
                     </div>
-
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <Select
-                            label="Category"
-                            value={formData.category}
-                            onChange={e => setFormData({ ...formData, category: e.target.value })}
-                            options={[
-                                { value: 'Gangguan Internet', label: 'No Internet / Slow' },
-                                { value: 'Billing Issue', label: 'Billing / Payment' },
-                                { value: 'New Installation', label: 'New Installation' },
-                                { value: 'Information Request', label: 'General Info' },
-                                { value: 'Other', label: 'Other' }
-                            ]}
-                        />
-                        <Select
-                            label="Priority"
-                            value={formData.priority}
-                            onChange={e => setFormData({ ...formData, priority: e.target.value })}
-                            options={[
-                                { value: 'Low', label: 'Low' },
-                                { value: 'Medium', label: 'Medium' },
-                                { value: 'High', label: 'High' },
-                                { value: 'Critical', label: 'Critical' }
-                            ]}
-                        />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-gray-700">Complaint Description (from WA)</label>
-                        <textarea
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            rows={4}
-                            value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            required
-                            placeholder="Copy paste chat details here..."
-                        />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-gray-700">Assign to Agent</label>
-                        <select
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            value={formData.assignedTo}
-                            onChange={e => {
-                                const agent = agents.find(a => a.id.toString() === e.target.value);
-                                setFormData({
-                                    ...formData,
-                                    assignedTo: e.target.value,
-                                    assignedName: agent ? agent.name : ''
-                                });
-                            }}
-                        >
-                            <option value="">-- Select Agent --</option>
-                            {agents.map(agent => (
-                                <option key={agent.id} value={agent.id}>{agent.name} ({agent.role})</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4 border-t">
-                        <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
-                        <Button type="submit"><Save className="w-4 h-4 mr-2" /> Create Ticket</Button>
-                    </div>
-                </form>
-            </Modal>
+                )}
+            </div>
         </div>
     );
 };

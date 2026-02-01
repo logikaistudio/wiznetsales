@@ -523,7 +523,13 @@ app.delete('/api/targets/:id', async (req, res) => {
 
 app.get('/api/customers', async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM customers ORDER BY created_at DESC');
+        const query = `
+            SELECT c.*, 
+                (SELECT COUNT(*)::int FROM tickets t WHERE t.customer_id = c.id AND t.status IN ('Open', 'In Progress')) as open_ticket_count
+            FROM customers c 
+            ORDER BY c.created_at DESC
+        `;
+        const result = await db.query(query);
         res.json(result.rows.map(row => ({
             id: row.id,
             customerId: row.customer_id,
@@ -546,7 +552,8 @@ app.get('/api/customers', async (req, res) => {
             salesName: row.sales_name,
             status: row.status,
             isActive: row.is_active !== false,
-            prospectDate: row.prospect_date
+            prospectDate: row.prospect_date,
+            openTicketCount: row.open_ticket_count || 0
         })));
     } catch (err) {
         res.status(500).json({ error: err.message });

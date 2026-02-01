@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, MapPin, Phone, Mail, Calendar, FileText, Save, Search, Plus, Trash2, CheckCircle, RefreshCw, Loader2, Edit } from 'lucide-react';
+import { User, MapPin, Phone, Mail, Calendar, FileText, Save, Search, Plus, Trash2, CheckCircle, RefreshCw, Loader2, Edit, AlertCircle } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
@@ -546,7 +546,17 @@ const Prospect = () => {
                             {filteredCustomers.length > 0 ? filteredCustomers.map((cust) => (
                                 <tr key={cust.id} onClick={() => handleSelectCustomer(cust)} className={cn("hover:bg-gray-50 transition-colors cursor-pointer", selectedId === cust.id && "bg-blue-50/50")}>
                                     <td className="px-6 py-4 font-medium text-gray-900">{cust.customerId}</td>
-                                    <td className="px-6 py-4 text-gray-600">{cust.name}</td>
+                                    <td className="px-6 py-4 text-gray-600">
+                                        <div className="flex items-center">
+                                            {cust.name}
+                                            {cust.openTicketCount > 0 && (
+                                                <div className="ml-2 flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800 border border-red-200" title="Has Open Tickets">
+                                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                                    {cust.openTicketCount}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 text-gray-500">{cust.prospectDate ? new Date(cust.prospectDate).toLocaleDateString() : '-'}</td>
                                     <td className="px-6 py-4 text-gray-500">{cust.salesName || '-'}</td>
                                     <td className="px-6 py-4">
