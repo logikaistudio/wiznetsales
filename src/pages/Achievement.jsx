@@ -3,14 +3,14 @@ import { Trophy, TrendingUp, MapPin, Users, Target, Award, ChevronDown, ChevronU
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 
-const StatCard = ({ title, value, subtitle, icon: Icon, color = "primary" }) => (
+const StatCard = ({ title, value, subtitle, icon: Icon }) => (
     <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
     >
         <div className="flex items-center justify-between mb-4">
-            <div className={cn("p-3 rounded-xl", `bg-${color}/10 text-${color}`)}>
+            <div className="p-3 bg-primary/10 rounded-xl text-primary">
                 <Icon className="w-6 h-6" />
             </div>
         </div>
@@ -81,21 +81,18 @@ const Achievement = () => {
                     value={isLoading ? '...' : data.summary.totalTarget.toLocaleString()}
                     subtitle="Cumulative target from all cities"
                     icon={Target}
-                    color="blue"
                 />
                 <StatCard
                     title="Total Achieved"
                     value={isLoading ? '...' : data.summary.totalActual.toLocaleString()}
                     subtitle="Active subscribers"
                     icon={TrendingUp}
-                    color="green"
                 />
                 <StatCard
                     title="Achievement Rate"
                     value={isLoading ? '...' : `${data.summary.percentage.toFixed(1)}%`}
                     subtitle={`${data.summary.totalActual} of ${data.summary.totalTarget}`}
                     icon={Award}
-                    color="yellow"
                 />
             </div>
 

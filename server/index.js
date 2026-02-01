@@ -785,7 +785,7 @@ app.get('/api/achievement', async (req, res) => {
                 COUNT(c.id) as actual,
                 0 as target,
                 0 as percentage
-            FROM person_incharge p
+            FROM person_in_charge p
             LEFT JOIN customers c ON c.sales_id = p.id AND c.is_active = true
             WHERE p.role = 'Sales'
             GROUP BY p.id, p.name, p.area
