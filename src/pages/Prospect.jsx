@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { User, MapPin, Phone, Mail, Calendar, FileText, Save, Search, Plus, Trash2, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { User, MapPin, Phone, Mail, Calendar, FileText, Save, Search, Plus, Trash2, CheckCircle, RefreshCw, Loader2, Edit } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import Modal from '../components/ui/Modal';
 import { cn } from '../lib/utils';
 
 const Prospect = () => {
@@ -16,6 +17,7 @@ const Prospect = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedId, setSelectedId] = useState(null); // ID of customer being edited/viewed
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -72,54 +74,62 @@ const Prospect = () => {
     }, []);
 
     // Handlers
+    const handleOpenModal = (customer = null) => {
+        if (customer) {
+            setSelectedId(customer.id);
+            const data = {
+                ...customer,
+                rfsDate: customer.rfsDate ? customer.rfsDate.split('T')[0] : '',
+                prospectDate: customer.prospectDate ? customer.prospectDate.split('T')[0] : '',
+                files: customer.files || []
+            };
+            setFormData(data);
+
+            // Trigger population logic for edit
+            if (data.area) {
+                const cluster = clusters.find(c => c.name === data.area);
+                if (cluster) {
+                    setFilteredCities(cluster.cities || []);
+                }
+            }
+        } else {
+            setSelectedId(null);
+            setFormData({
+                customerId: `CUST-${Date.now()}`,
+                type: 'Broadband Home',
+                name: '',
+                address: '',
+                area: '',
+                kabupaten: '',
+                kecamatan: '',
+                kelurahan: '',
+                latitude: '',
+                longitude: '',
+                phone: '',
+                email: '',
+                productId: '',
+                productName: '',
+                rfsDate: '',
+                salesId: '',
+                salesName: '',
+                status: 'Prospect',
+                prospectDate: new Date().toISOString().split('T')[0],
+                isActive: true,
+                files: []
+            });
+            setFilteredCities([]);
+            setDistricts([]);
+            setVillages([]);
+        }
+        setIsModalOpen(true);
+    };
+
     const handleReset = () => {
-        setSelectedId(null);
-        setFormData({
-            customerId: `CUST-${Date.now()}`,
-            type: 'Broadband Home',
-            name: '',
-            address: '',
-            area: '',
-            kabupaten: '',
-            kecamatan: '',
-            kelurahan: '',
-            latitude: '',
-            longitude: '',
-            phone: '',
-            email: '',
-            productId: '',
-            productName: '',
-            rfsDate: '',
-            salesId: '',
-            salesName: '',
-            status: 'Prospect',
-            prospectDate: new Date().toISOString().split('T')[0],
-            isActive: true,
-            files: []
-        });
-        setFilteredCities([]);
-        setDistricts([]);
-        setVillages([]);
+        handleOpenModal(null);
     };
 
     const handleSelectCustomer = (customer) => {
-        setSelectedId(customer.id);
-        const data = {
-            ...customer,
-            rfsDate: customer.rfsDate ? customer.rfsDate.split('T')[0] : '',
-            prospectDate: customer.prospectDate ? customer.prospectDate.split('T')[0] : '',
-            files: customer.files || []
-        };
-        setFormData(data);
-
-        // Trigger population logic for edit
-        if (data.area) { // Area is Cluster Name, find cluster
-            const cluster = clusters.find(c => c.name === data.area);
-            if (cluster) {
-                setFilteredCities(cluster.cities || []);
-            }
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        handleOpenModal(customer);
     };
 
     const handleFileUpload = (e) => {
@@ -165,7 +175,7 @@ const Prospect = () => {
             if (!res.ok) throw new Error('Failed to save');
 
             await fetchData();
-            if (!selectedId) handleReset(); // Clear form if new
+            setIsModalOpen(false); // Close modal after save
             alert('Data saved successfully!');
 
         } catch (error) {
@@ -308,15 +318,14 @@ const Prospect = () => {
                 </div>
             </div>
 
-            {/* TOP SECTION: FORM */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
-                    <User className="w-5 h-5 text-primary" />
-                    <h2 className="text-lg font-bold text-gray-800">
-                        {selectedId ? 'Edit Customer Details' : 'New Customer Entry'}
-                    </h2>
-                </div>
 
+            {/* MODAL: Customer Entry Form */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={selectedId ? 'Edit Customer Details' : 'New Customer Entry'}
+                className="max-w-6xl max-h-[90vh] overflow-y-auto"
+            >
                 <form onSubmit={handleSave} className="space-y-6">
                     {/* Row 1: Basic Info */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -489,14 +498,17 @@ const Prospect = () => {
                         )}
                     </div>
 
-                    <div className="flex justify-end pt-6 border-t border-gray-100">
+                    <div className="flex justify-end gap-2 pt-6 border-t border-gray-100">
+                        <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
+                            Cancel
+                        </Button>
                         <Button type="submit" disabled={isSaving}>
                             {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                             Save Record
                         </Button>
                     </div>
                 </form>
-            </div>
+            </Modal>
 
             {/* BOTTOM SECTION: LIST */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -556,7 +568,9 @@ const Prospect = () => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSelectCustomer(cust); }}>Edit</Button>
+                                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSelectCustomer(cust); }}>
+                                            <Edit className="w-4 h-4" />
+                                        </Button>
                                     </td>
                                 </tr>
                             )) : (
