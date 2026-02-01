@@ -41,7 +41,7 @@ const MobileNav = () => {
         { name: 'Promo', path: '/master-data/promo', icon: Tag },
     ];
 
-    const sidebarBg = "#317873"; // Primary color
+    const sidebarBg = "#011F5B"; // Updated Brand Color
 
     return (
         <div className="md:hidden">
@@ -80,7 +80,10 @@ const MobileNav = () => {
                         >
                             <div className="flex flex-col h-full text-white">
                                 <div className="p-6 flex items-center justify-between border-b border-white/10">
-                                    <h1 className="text-2xl font-bold tracking-wider">Netsales</h1>
+                                    <div>
+                                        <h1 className="text-2xl font-bold tracking-wider">Netsales</h1>
+                                        <p className="text-[10px] uppercase tracking-widest text-blue-200 mt-1">ISP Sales Dashboard</p>
+                                    </div>
                                     <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-white/20 rounded-full">
                                         <X className="w-6 h-6" />
                                     </button>
