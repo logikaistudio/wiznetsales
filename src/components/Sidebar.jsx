@@ -42,7 +42,7 @@ const Sidebar = () => {
     ];
 
     return (
-        <aside className="hidden md:flex flex-col w-64 bg-primary text-white h-full shadow-xl overflow-y-auto">
+        <aside className="hidden md:flex flex-col w-[280px] bg-[#011F5B] text-white h-full shadow-xl overflow-y-auto">
             <div className="p-6 flex items-center justify-center border-b border-white/10 shrink-0">
                 <h1 className="text-2xl font-bold tracking-wider">Netsales</h1>
             </div>
