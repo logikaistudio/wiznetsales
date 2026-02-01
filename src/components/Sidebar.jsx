@@ -100,7 +100,7 @@ const Sidebar = () => {
 
             </nav>
             <div className="p-4 border-t border-white/10 text-sm text-center text-white/60 shrink-0">
-                © 2026 Netsales App
+                © 2026 Netsales - LogikAi
             </div>
         </aside>
     );
