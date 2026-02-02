@@ -83,14 +83,11 @@ const PersonIncharge = () => {
     };
 
     const toggleStatus = () => {
-        const newStatus = formData.status === 'active' ? 'inactive' : 'active';
-        const today = new Date().toISOString().split('T')[0];
+        const newStatus = formData.status === 'active' || formData.status === 'Active' ? 'inactive' : 'active';
 
         setFormData(prev => ({
             ...prev,
-            status: newStatus,
-            activeDate: newStatus === 'active' ? today : prev.activeDate,
-            inactiveDate: newStatus === 'inactive' ? today : null
+            status: newStatus
         }));
     };
 
@@ -261,9 +258,23 @@ const PersonIncharge = () => {
                                 </span>
                             )}
                         </div>
-                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-200/50">
-                            <div className="space-y-1"><span className="text-xs text-gray-500 flex items-center gap-1"><Calendar className="w-3 h-3" /> Active Since</span><div className="text-sm font-medium text-gray-900">{formData.activeDate || '-'}</div></div>
-                            <div className="space-y-1"><span className="text-xs text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> Inactive Since</span><div className="text-sm font-medium text-gray-900">{formData.inactiveDate || '-'}</div></div>
+                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200/50">
+                            <Input
+                                type="date"
+                                label="Active Since"
+                                value={formData.activeDate || ''}
+                                onChange={e => setFormData({ ...formData, activeDate: e.target.value })}
+                                disabled={!isEditMode}
+                                className={!isEditMode && "bg-gray-50 text-gray-600"}
+                            />
+                            <Input
+                                type="date"
+                                label="Inactive Since"
+                                value={formData.inactiveDate || ''}
+                                onChange={e => setFormData({ ...formData, inactiveDate: e.target.value })}
+                                disabled={!isEditMode}
+                                className={!isEditMode && "bg-gray-50 text-gray-600"}
+                            />
                         </div>
                     </div>
 
