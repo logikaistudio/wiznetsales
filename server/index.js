@@ -33,6 +33,25 @@ app.get('/api/setup-schema', async (req, res) => {
     res.json({ message: 'Please run npm run server:setup' });
 });
 
+// Auto-migration for products service_type
+const ensureServiceTypeColumn = async () => {
+    try {
+        await db.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                               WHERE table_name='products' AND column_name='service_type') THEN
+                    ALTER TABLE products ADD COLUMN service_type VARCHAR(50);
+                END IF;
+            END $$;
+        `);
+        console.log('Ensured products.service_type column exists');
+    } catch (err) {
+        console.error('Migration error:', err);
+    }
+};
+ensureServiceTypeColumn();
+
 // ==========================================
 // COVERAGE MANAGEMENT
 // ==========================================
@@ -349,6 +368,7 @@ app.get('/api/products', async (req, res) => {
             id: row.id,
             name: row.name,
             category: row.category,
+            serviceType: row.service_type,
             price: parseFloat(row.price),
             cogs: parseFloat(row.cogs),
             bandwidth: row.bandwidth,
@@ -362,12 +382,12 @@ app.get('/api/products', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
     try {
-        const { name, category, price, cogs, bandwidth, releaseDate, status } = req.body;
+        const { name, category, serviceType, price, cogs, bandwidth, releaseDate, status } = req.body;
         const query = `
-      INSERT INTO products (name, category, price, cogs, bandwidth, release_date, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+      INSERT INTO products (name, category, service_type, price, cogs, bandwidth, release_date, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
     `;
-        const result = await db.query(query, [name, category, price, cogs, bandwidth, releaseDate, status || 'Active']);
+        const result = await db.query(query, [name, category, serviceType, price, cogs, bandwidth, releaseDate, status || 'Active']);
         res.json({ id: result.rows[0].id, message: 'Created' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -377,12 +397,12 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, category, price, cogs, bandwidth, releaseDate, status } = req.body;
+        const { name, category, serviceType, price, cogs, bandwidth, releaseDate, status } = req.body;
         const query = `
-      UPDATE products SET name=$1, category=$2, price=$3, cogs=$4, bandwidth=$5, release_date=$6, status=$7
-      WHERE id=$8
+      UPDATE products SET name=$1, category=$2, service_type=$3, price=$4, cogs=$5, bandwidth=$6, release_date=$7, status=$8
+      WHERE id=$9
     `;
-        await db.query(query, [name, category, price, cogs, bandwidth, releaseDate, status, id]);
+        await db.query(query, [name, category, serviceType, price, cogs, bandwidth, releaseDate, status, id]);
         res.json({ message: 'Updated' });
     } catch (err) {
         res.status(500).json({ error: err.message });

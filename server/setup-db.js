@@ -10,22 +10,22 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../.env') });
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 const setupSchema = async () => {
-    console.log('Connecting to NeonDB...');
-    try {
-        const client = await pool.connect();
-        console.log('Connected successfully!');
+  console.log('Connecting to NeonDB...');
+  try {
+    const client = await pool.connect();
+    console.log('Connected successfully!');
 
-        // START TRANSACTION
-        await client.query('BEGIN');
+    // START TRANSACTION
+    await client.query('BEGIN');
 
-        const createTableQuery = `
+    const createTableQuery = `
       -- Coverage Sites
       CREATE TABLE IF NOT EXISTS coverage_sites (
         id SERIAL PRIMARY KEY,
@@ -76,6 +76,7 @@ const setupSchema = async () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         category VARCHAR(50) NOT NULL, -- Retail, Corporate
+        service_type VARCHAR(50),
         price DECIMAL(15, 2) DEFAULT 0,
         cogs DECIMAL(15, 2) DEFAULT 0,
         bandwidth VARCHAR(50),
@@ -117,22 +118,22 @@ const setupSchema = async () => {
       );
     `;
 
-        console.log('Creating tables...');
-        await client.query(createTableQuery);
-        console.log('Tables created successfully!');
+    console.log('Creating tables...');
+    await client.query(createTableQuery);
+    console.log('Tables created successfully!');
 
-        await client.query('COMMIT');
+    await client.query('COMMIT');
 
-        // Initial Seed if empty
-        // ... skipping seed for now as we just want structure
+    // Initial Seed if empty
+    // ... skipping seed for now as we just want structure
 
-        client.release();
-        pool.end();
-    } catch (err) {
-        await pool.query('ROLLBACK');
-        console.error('Error setup database:', err);
-        process.exit(1);
-    }
+    client.release();
+    pool.end();
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Error setup database:', err);
+    process.exit(1);
+  }
 };
 
 setupSchema();

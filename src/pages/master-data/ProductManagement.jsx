@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
+import Select from '../../components/ui/Select';
 
 const ProductManagement = () => {
     const [activeTab, setActiveTab] = useState('broadband'); // 'broadband' | 'corporate'
@@ -53,6 +54,7 @@ const ProductManagement = () => {
                 cogs: '',
                 releaseDate: today,
                 bandwidth: activeTab === 'corporate' ? '' : undefined,
+                serviceType: 'ftth',
                 category: activeTab === 'broadband' ? 'Broadband Home' : 'Corporate'
             });
             setIsEditMode(true);
@@ -171,6 +173,7 @@ const ProductManagement = () => {
                         <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-100">
                             <tr>
                                 <th className="px-6 py-4">Product Name</th>
+                                <th className="px-6 py-4">Service Type</th>
                                 {activeTab === 'corporate' && <th className="px-6 py-4">Bandwidth</th>}
                                 <th className="px-6 py-4">Price (IDR)</th>
                                 <th className="px-6 py-4">COGS (IDR)</th>
@@ -182,6 +185,11 @@ const ProductManagement = () => {
                                 filteredData.map((item) => (
                                     <tr key={item.id} onClick={() => handleOpenModal(item)} className="hover:bg-gray-50 transition-colors cursor-pointer group">
                                         <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
+                                        <td className="px-6 py-4 text-gray-500">
+                                            <span className="uppercase text-xs font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded-full border border-blue-100">
+                                                {item.serviceType || '-'}
+                                            </span>
+                                        </td>
                                         {activeTab === 'corporate' && <td className="px-6 py-4 text-gray-500">{item.bandwidth}</td>}
                                         <td className="px-6 py-4 text-gray-900 font-medium">Rp {item.price.toLocaleString()}</td>
                                         <td className="px-6 py-4 text-gray-500">Rp {item.cogs.toLocaleString()}</td>
@@ -208,6 +216,21 @@ const ProductManagement = () => {
                 <form onSubmit={handleSave} className="space-y-6">
                     <div className="space-y-4">
                         <Input label="Product Name" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} required placeholder="e.g. Home Fiber 100Mbps" disabled={!isEditMode} className={!isEditMode && "bg-gray-50 text-gray-600"} />
+                        <Select
+                            label="Service Type"
+                            value={formData.serviceType || ''}
+                            onChange={e => setFormData({ ...formData, serviceType: e.target.value })}
+                            required
+                            options={[
+                                { value: 'ftth', label: 'FTTH' },
+                                { value: 'hfc', label: 'HFC' },
+                                { value: 'internet+tv', label: 'Internet + TV' },
+                                { value: 'iptv', label: 'IPTV' }
+                            ]}
+                            placeholder="Select Service Type"
+                            disabled={!isEditMode}
+                            className={!isEditMode && "bg-gray-50 text-gray-600 cursor-not-allowed"}
+                        />
                         {activeTab === 'corporate' && (
                             <Input label="Bandwidth" value={formData.bandwidth || ''} onChange={e => setFormData({ ...formData, bandwidth: e.target.value })} required placeholder="e.g. 100 Mbps" disabled={!isEditMode} className={!isEditMode && "bg-gray-50 text-gray-600"} />
                         )}
