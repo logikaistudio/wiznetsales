@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { User, MapPin, Phone, Mail, FileText, Save, Search, Plus, Trash2, CheckCircle, Loader2, Edit, AlertCircle, Upload, Download, RefreshCw } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -6,8 +7,12 @@ import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
+import { useAuth } from '../context/AuthContext';
 
 const Prospect = () => {
+    const location = useLocation();
+    const navigate = useNavigate();
+
     // Data States
     const [customers, setCustomers] = useState([]);
     const [products, setProducts] = useState([]);
@@ -91,6 +96,15 @@ const Prospect = () => {
             const lng = parseFloat(formData.longitude);
             if (!isNaN(lat) && !isNaN(lng)) {
                 if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+
+                // If we already have a status from redirection (checked=true), skip one automatic check to respect the passed data
+                // checking valid status prevents overwrite
+                if (coverageStatus.checked && coverageStatus.node && !coverageStatus.loading) {
+                    // But we must ensure it matches current coords. 
+                    // Roughly simplest is just let it re-check or check if coords match?
+                    // deciding to just let it re-check for consistency, but set initial state below.
+                }
+
                 setCoverageStatus(prev => ({ ...prev, loading: true, message: 'Checking coverage...' }));
                 try {
                     const res = await fetch(`/api/coverage/check-point?lat=${lat}&long=${lng}`);
@@ -116,6 +130,42 @@ const Prospect = () => {
         return () => clearTimeout(timer);
     }, [formData.latitude, formData.longitude]);
 
+    // Handle Incoming Navigation State (from Coverage Manual Check)
+    useEffect(() => {
+        if (location.state && location.state.lat && location.state.lng) {
+            const { lat, lng, coverageStatus: status, nearestDistance, nearestPoint } = location.state;
+
+            // Pre-fill form
+            setFormData({
+                customerId: `CUST-${Date.now()}`,
+                type: 'Broadband Home',
+                name: '', address: '', area: '', kabupaten: '', kecamatan: '', kelurahan: '',
+                latitude: lat, longitude: lng,
+                phone: '', email: '', productId: '', productName: '',
+                rfsDate: '', salesId: '', salesName: '', status: 'Prospect',
+                prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: [],
+                fat: ''
+            });
+
+            // Set coverage status immediately
+            setCoverageStatus({
+                checked: true,
+                isCovered: status === 'Covered',
+                distance: nearestDistance,
+                node: nearestPoint,
+                loading: false,
+                message: status === 'Covered'
+                    ? `Covered! (${Math.round(nearestDistance)}m from ${nearestPoint?.siteId || 'Node'})`
+                    : `Out of Coverage (${Math.round(nearestDistance)}m from nearest node)`
+            });
+
+            setIsModalOpen(true);
+
+            // Clear state to avoid loops
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [location.state, navigate, location.pathname]);
+
     // Handlers
     const handleOpenModal = (customer = null) => {
         setCoverageStatus({ checked: false, isCovered: false, distance: 0, node: null, loading: false, message: '' });
@@ -140,7 +190,8 @@ const Prospect = () => {
                 name: '', address: '', area: '', kabupaten: '', kecamatan: '', kelurahan: '',
                 latitude: '', longitude: '', phone: '', email: '', productId: '', productName: '',
                 rfsDate: '', salesId: '', salesName: '', status: 'Prospect',
-                prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: []
+                prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: [],
+                fat: ''
             });
             setFilteredCities([]);
         }
@@ -167,30 +218,52 @@ const Prospect = () => {
     // EXPORT IMPORT LOGIC
 
     // Field Mapping Configuration
+    // Field Mapping Configuration (Enhanced for Detailed Export)
     const FIELD_MAP = [
         { header: 'Customer ID', key: 'customerId', width: 20 },
         { header: 'Full Name', key: 'name', width: 25 },
         { header: 'Phone (WA)', key: 'phone', width: 15 },
         { header: 'Email', key: 'email', width: 25 },
         { header: 'Address', key: 'address', width: 40 },
-        { header: 'Latitude', key: 'latitude', width: 15 },
-        { header: 'Longitude', key: 'longitude', width: 15 },
         { header: 'Cluster/Area', key: 'area', width: 20 },
         { header: 'Kabupaten/City', key: 'kabupaten', width: 20 },
         { header: 'Kecamatan', key: 'kecamatan', width: 20 },
         { header: 'Kelurahan', key: 'kelurahan', width: 20 },
+        { header: 'FAT (Fiber Access Terminal)', key: 'fat', width: 20 }, // Added FAT
+        { header: 'Latitude', key: 'latitude', width: 15 },
+        { header: 'Longitude', key: 'longitude', width: 15 },
         { header: 'Product', key: 'productName', width: 25 },
         { header: 'Sales Person', key: 'salesName', width: 20 },
         { header: 'Status', key: 'status', width: 15 },
-        { header: 'Prospect Date', key: 'prospectDate', width: 15 }
+        { header: 'Prospect Date', key: 'prospectDate', width: 15 },
+        { header: 'RFS Date', key: 'rfsDate', width: 15 }, // Added RFS Date
+        { header: 'Photos', key: 'files', width: 50 }, // Added Photos
     ];
 
     const handleExport = () => {
         // 1. Format Data
+        // 1. Format Data
         const dataToExport = customers.map(c => {
             const row = {};
             FIELD_MAP.forEach(field => {
-                row[field.header] = c[field.key] || '';
+                let val = c[field.key];
+
+                // Special formatting for Files/Photos
+                if (field.key === 'files') {
+                    if (Array.isArray(val) && val.length > 0) {
+                        // Join all file URLs or paths with comma + newline
+                        val = val.map(f => typeof f === 'string' ? f : (f.url || f.path || JSON.stringify(f))).join(',\n');
+                    } else {
+                        val = ''; // No photos
+                    }
+                }
+
+                // Special formatting for dates if needed (e.g., removing T part)
+                if ((field.key === 'prospectDate' || field.key === 'rfsDate') && val && typeof val === 'string') {
+                    val = val.split('T')[0];
+                }
+
+                row[field.header] = val || '';
             });
             return row;
         });
@@ -292,6 +365,9 @@ const Prospect = () => {
         }
     };
 
+    const { user } = useAuth();
+    const canManageData = user && (user.role === 'admin' || user.role === 'leader' || user.role === 'manager');
+
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -300,14 +376,18 @@ const Prospect = () => {
                     <p className="text-gray-500 mt-1">Manage pipeline, customers, and subscriptions.</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" onClick={handleExport}>
-                        <Download className="w-4 h-4 mr-2" /> Export
-                    </Button>
-                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
-                    <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-                        <Upload className="w-4 h-4 mr-2" /> Import
-                    </Button>
-                    <div className="w-px bg-gray-300 mx-1"></div>
+                    {canManageData && (
+                        <>
+                            <Button variant="outline" onClick={handleExport}>
+                                <Download className="w-4 h-4 mr-2" /> Export
+                            </Button>
+                            <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
+                            <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+                                <Upload className="w-4 h-4 mr-2" /> Import
+                            </Button>
+                            <div className="w-px bg-gray-300 mx-1"></div>
+                        </>
+                    )}
                     <div className="relative">
                         <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                         <input
@@ -491,6 +571,14 @@ const Prospect = () => {
                                     onChange={e => setFormData({ ...formData, kelurahan: e.target.value })}
                                 />
                             </div>
+                        </div>
+                        <div>
+                            <Input
+                                label="FAT (Fiber Access Terminal)"
+                                value={formData.fat || ''} // Ensure it's controlled
+                                onChange={e => setFormData({ ...formData, fat: e.target.value })}
+                                placeholder="Example: FAT-01-02"
+                            />
                         </div>
                     </div>
 

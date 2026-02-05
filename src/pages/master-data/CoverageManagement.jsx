@@ -17,25 +17,11 @@ delete Icon.Default.prototype._getIconUrl;
 Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow });
 
 const APP_FIELDS = [
-    { key: 'siteId', label: 'Site Id', required: true },
-    { key: 'cityTown', label: 'City Town' },
-    { key: 'kecamatan', label: 'Kecamatan/District' },
-    { key: 'kelurahan', label: 'Kelurahan' },
-    { key: 'networkType', label: 'Network Type' },
-    { key: 'fibernode', label: 'Fibernode' },
-    { key: 'fibernodeDesc', label: 'Fibernode Description' },
-    { key: 'areaLat', label: 'Area Lat' },
-    { key: 'areaLong', label: 'Area Long' },
-    { key: 'clusterId', label: 'Cluster Id' },
-    { key: 'ampli', label: 'Ampli', required: true },
+    { key: 'networkType', label: 'Network', required: true },
+    { key: 'siteId', label: 'Site ID', required: true },
     { key: 'ampliLat', label: 'Ampli Lat', required: true },
     { key: 'ampliLong', label: 'Ampli Long', required: true },
-    { key: 'location', label: 'Location' },
-    { key: 'streetName', label: 'Street Name' },
-    { key: 'streetBlock', label: 'Street Block' },
-    { key: 'streetNo', label: 'Street No' },
-    { key: 'rtrw', label: 'RTRW' },
-    { key: 'dwelling', label: 'Dwelling' },
+    { key: 'locality', label: 'Locality', required: true },
 ];
 
 const CoverageManagement = () => {
@@ -60,6 +46,15 @@ const CoverageManagement = () => {
         coverageColor: '#0ea5e9',
         uncoveredColor: '#ef4444'
     });
+
+    // Coverage Color Zones State
+    const [colorZones, setColorZones] = useState([
+        { id: 1, label: 'Primary Coverage', color: '#0ea5e9', radius: 250 },
+        { id: 2, label: 'Secondary Coverage', color: '#10b981', radius: 500 }
+    ]);
+
+    // Info Panel State
+    const [showInfoPanel, setShowInfoPanel] = useState(true);
 
     // Loading State
     const [isLoading, setIsLoading] = useState(false);
@@ -99,6 +94,16 @@ const CoverageManagement = () => {
             const res = await fetch('/api/settings');
             const data = await res.json();
             if (data.coverageRadius) setSettings(prev => ({ ...prev, ...data }));
+
+            // Load color zones from settings
+            if (data.coverageColorZones) {
+                try {
+                    const zones = JSON.parse(data.coverageColorZones);
+                    setColorZones(zones);
+                } catch (e) {
+                    console.error('Error parsing color zones:', e);
+                }
+            }
         } catch (e) { console.error(e); }
     }, []);
 
@@ -145,6 +150,24 @@ const CoverageManagement = () => {
         }
     };
 
+    const handleDeleteAll = async () => {
+        if (confirm(`⚠️ WARNING: This will delete ALL ${totalRows.toLocaleString()} coverage sites from the database. This action cannot be undone. Are you sure?`)) {
+            if (confirm('Final confirmation: Delete all coverage data?')) {
+                setIsLoading(true);
+                setLoadingMessage('Deleting all data...');
+                try {
+                    await fetch('/api/coverage/all', { method: 'DELETE' });
+                    await fetchData(1, '');
+                    alert('All coverage data deleted successfully');
+                } catch (error) {
+                    alert('Error deleting all data: ' + error.message);
+                } finally {
+                    setIsLoading(false);
+                }
+            }
+        }
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         setIsSaving(true);
@@ -174,11 +197,32 @@ const CoverageManagement = () => {
         try {
             await Promise.all([
                 fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageRadius', value: settings.coverageRadius }) }),
-                fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageColor', value: settings.coverageColor }) })
+                fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageColor', value: settings.coverageColor }) }),
+                fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageColorZones', value: JSON.stringify(colorZones) }) })
             ]);
             setIsSettingsOpen(false);
             alert("Settings saved!");
         } catch (e) { alert("Failed to save settings"); }
+    };
+
+    // Color Zone Management
+    const addColorZone = () => {
+        const newId = Math.max(...colorZones.map(z => z.id), 0) + 1;
+        setColorZones([...colorZones, { id: newId, label: `Coverage ${newId}`, color: '#6366f1', radius: 250 }]);
+    };
+
+    const updateColorZone = (id, field, value) => {
+        setColorZones(colorZones.map(zone =>
+            zone.id === id ? { ...zone, [field]: value } : zone
+        ));
+    };
+
+    const deleteColorZone = (id) => {
+        if (colorZones.length > 1) {
+            setColorZones(colorZones.filter(zone => zone.id !== id));
+        } else {
+            alert('At least one coverage zone is required');
+        }
     };
 
     // EXPORT EXCEL
@@ -307,11 +351,59 @@ const CoverageManagement = () => {
                     <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
                         <Upload className="w-4 h-4 mr-2" /> Import XLS
                     </Button>
+                    <Button variant="danger" onClick={handleDeleteAll}>
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete All
+                    </Button>
                     <Button onClick={() => handleOpenModal()}>
                         <Plus className="w-4 h-4 mr-2" /> Add Site
                     </Button>
                 </div>
             </div>
+
+            {/* Info Panel - Data Description */}
+            {showInfoPanel && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 relative">
+                    <button
+                        onClick={() => setShowInfoPanel(false)}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                    >
+                        ✕
+                    </button>
+                    <div className="flex items-start gap-3">
+                        <div className="bg-blue-500 rounded-lg p-2 mt-0.5">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 mb-2">📋 Data Coverage - Panduan Pengisian</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
+                                <div>
+                                    <span className="font-medium text-blue-700">• Network:</span> Jenis jaringan (FTTH/HFC)
+                                </div>
+                                <div>
+                                    <span className="font-medium text-blue-700">• Site ID:</span> ID unik lokasi coverage
+                                </div>
+                                <div>
+                                    <span className="font-medium text-blue-700">• Ampli Lat:</span> Latitude koordinat amplifier (contoh: -6.2088)
+                                </div>
+                                <div>
+                                    <span className="font-medium text-blue-700">• Ampli Long:</span> Longitude koordinat amplifier (contoh: 106.8456)
+                                </div>
+                                <div className="md:col-span-2">
+                                    <span className="font-medium text-blue-700">• Locality:</span> Nama lokasi/daerah (contoh: Jakarta Pusat, Tangerang Selatan)
+                                </div>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-blue-200">
+                                <p className="text-xs text-gray-600">
+                                    💡 <strong>Tips:</strong> Gunakan file Excel dengan 5 kolom tersebut untuk import data.
+                                    File contoh: <code className="bg-white px-2 py-0.5 rounded text-blue-600">sample-coverage-import.xlsx</code>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                 <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl">
@@ -334,18 +426,50 @@ const CoverageManagement = () => {
                         <MapContainer center={mapCenter} zoom={12} className="h-full w-full z-0" scrollWheelZoom={true}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             {coverageData.filter(s => s.ampliLat && s.ampliLong).map((site) => (
-                                <Circle
-                                    key={`c-${site.id}`}
-                                    center={[site.ampliLat, site.ampliLong]}
-                                    radius={parseInt(settings.coverageRadius)}
-                                    pathOptions={{ color: settings.coverageColor, fillColor: settings.coverageColor, fillOpacity: 0.1 }}
-                                >
+                                <React.Fragment key={`site-${site.id}`}>
+                                    {/* Render multiple color zones */}
+                                    {colorZones.map((zone) => (
+                                        <Circle
+                                            key={`c-${site.id}-${zone.id}`}
+                                            center={[site.ampliLat, site.ampliLong]}
+                                            radius={parseInt(zone.radius)}
+                                            pathOptions={{
+                                                color: zone.color,
+                                                fillColor: zone.color,
+                                                fillOpacity: 0.1,
+                                                weight: 2
+                                            }}
+                                        />
+                                    ))}
+                                    {/* Marker on top */}
                                     <Marker position={[site.ampliLat, site.ampliLong]} icon={createCustomIcon()} eventHandlers={{ click: () => handleOpenModal(site) }}>
-                                        <Popup><div className="text-xs"><strong>{site.siteId}</strong><br />{site.ampli}</div></Popup>
+                                        <Popup>
+                                            <div className="text-xs">
+                                                <strong>{site.siteId}</strong><br />
+                                                <span className="text-gray-600">{site.locality}</span><br />
+                                                <span className="text-blue-600">{site.networkType}</span>
+                                            </div>
+                                        </Popup>
                                     </Marker>
-                                </Circle>
+                                </React.Fragment>
                             ))}
                         </MapContainer>
+
+                        {/* Legend */}
+                        <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 z-[1000] border">
+                            <h4 className="text-xs font-semibold mb-2 text-gray-700">Coverage Zones</h4>
+                            <div className="space-y-1.5">
+                                {colorZones.map((zone) => (
+                                    <div key={`legend-${zone.id}`} className="flex items-center gap-2 text-xs">
+                                        <div
+                                            className="w-3 h-3 rounded-full border border-white shadow"
+                                            style={{ backgroundColor: zone.color }}
+                                        ></div>
+                                        <span className="text-gray-700">{zone.label} ({zone.radius}m)</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -356,12 +480,11 @@ const CoverageManagement = () => {
                         <table className="w-full text-left text-xs">
                             <thead className="bg-gray-50 text-gray-600 font-medium border-b">
                                 <tr>
-                                    <th className="px-4 py-3">Site ID / Ampli</th>
-                                    <th className="px-4 py-3">City / Town</th>
-                                    <th className="px-4 py-3">Kecamatan</th>
-                                    <th className="px-4 py-3">Fibernode Desc</th>
-                                    <th className="px-4 py-3">Network Type</th>
-                                    <th className="px-4 py-3">Location</th>
+                                    <th className="px-4 py-3">Network</th>
+                                    <th className="px-4 py-3">Site ID</th>
+                                    <th className="px-4 py-3">Ampli Lat</th>
+                                    <th className="px-4 py-3">Ampli Long</th>
+                                    <th className="px-4 py-3">Locality</th>
                                     <th className="px-4 py-3 text-right">Action</th>
                                 </tr>
                             </thead>
@@ -369,24 +492,20 @@ const CoverageManagement = () => {
                                 {coverageData.length > 0 ? coverageData.map((site) => (
                                     <tr key={site.id} onClick={() => handleOpenModal(site)} className="hover:bg-gray-50 cursor-pointer group">
                                         <td className="px-4 py-3">
-                                            <div className="font-bold text-gray-900">{site.siteId}</div>
-                                            <div className="text-gray-500">{site.ampli}</div>
-                                        </td>
-                                        <td className="px-4 py-3">{site.cityTown}</td>
-                                        <td className="px-4 py-3">{site.kecamatan}</td>
-                                        <td className="px-4 py-3 max-w-[200px] truncate" title={site.fibernodeDesc}>{site.fibernodeDesc}</td>
-                                        <td className="px-4 py-3">
                                             <span className={cn("px-2 py-0.5 rounded text-[10px] uppercase font-bold", site.networkType === 'FTTH' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700")}>
-                                                {site.networkType}
+                                                {site.networkType || 'HFC'}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-500 max-w-[150px] truncate">{site.location}</td>
+                                        <td className="px-4 py-3 font-medium text-gray-900">{site.siteId}</td>
+                                        <td className="px-4 py-3 text-gray-600">{site.ampliLat}</td>
+                                        <td className="px-4 py-3 text-gray-600">{site.ampliLong}</td>
+                                        <td className="px-4 py-3 text-gray-600">{site.locality}</td>
                                         <td className="px-4 py-3 text-right">
                                             <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100">Edit</Button>
                                         </td>
                                     </tr>
                                 )) : (
-                                    <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">No data found.</td></tr>
+                                    <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No data found.</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -441,27 +560,84 @@ const CoverageManagement = () => {
             </Modal>
 
             {/* Settings Modal */}
-            <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Coverage Settings" className="max-w-md">
-                <div className="space-y-4">
-                    <Input
-                        label="Coverage Radius (meters)"
-                        type="number"
-                        value={settings.coverageRadius}
-                        onChange={e => setSettings({ ...settings, coverageRadius: e.target.value })}
-                    />
+            <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Coverage Settings" className="max-w-2xl">
+                <div className="space-y-6">
+                    {/* Coverage Color Zones */}
                     <div>
-                        <label className="text-sm font-medium mb-1 block">Coverage Color</label>
-                        <div className="flex gap-2 items-center">
-                            <input
-                                type="color"
-                                value={settings.coverageColor}
-                                onChange={e => setSettings({ ...settings, coverageColor: e.target.value })}
-                                className="h-10 w-20 border rounded cursor-pointer"
-                            />
-                            <span className="text-xs text-gray-500">{settings.coverageColor}</span>
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="text-sm font-semibold text-gray-900">Coverage Color Zones</label>
+                            <Button size="sm" variant="secondary" onClick={addColorZone}>
+                                <Plus className="w-3 h-3 mr-1" /> Add Zone
+                            </Button>
                         </div>
+
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                            {colorZones.map((zone, index) => (
+                                <div key={zone.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex-1 grid grid-cols-3 gap-2">
+                                            <div>
+                                                <label className="text-xs text-gray-600 mb-1 block">Label</label>
+                                                <input
+                                                    type="text"
+                                                    value={zone.label}
+                                                    onChange={(e) => updateColorZone(zone.id, 'label', e.target.value)}
+                                                    className="w-full px-2 py-1.5 text-sm border rounded focus:ring-2 focus:ring-primary/20"
+                                                    placeholder="e.g., Primary"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-600 mb-1 block">Color</label>
+                                                <div className="flex gap-2 items-center">
+                                                    <input
+                                                        type="color"
+                                                        value={zone.color}
+                                                        onChange={(e) => updateColorZone(zone.id, 'color', e.target.value)}
+                                                        className="h-8 w-16 border rounded cursor-pointer"
+                                                    />
+                                                    <span className="text-xs text-gray-500">{zone.color}</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-600 mb-1 block">Radius (m)</label>
+                                                <input
+                                                    type="number"
+                                                    value={zone.radius}
+                                                    onChange={(e) => updateColorZone(zone.id, 'radius', parseInt(e.target.value) || 0)}
+                                                    className="w-full px-2 py-1.5 text-sm border rounded focus:ring-2 focus:ring-primary/20"
+                                                    placeholder="250"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => deleteColorZone(zone.id)}
+                                            className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded"
+                                            title="Delete zone"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    {/* Preview */}
+                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                                            <div
+                                                className="w-4 h-4 rounded-full border-2 border-white shadow"
+                                                style={{ backgroundColor: zone.color }}
+                                            ></div>
+                                            <span>Preview: {zone.label} - {zone.radius}m radius</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <p className="text-xs text-gray-500 mt-2">
+                            💡 Zones akan ditampilkan di map dengan warna dan radius yang berbeda
+                        </p>
                     </div>
-                    <div className="flex justify-end pt-4">
+
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                        <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
                         <Button onClick={handleSaveSettings}>Save Settings</Button>
                     </div>
                 </div>
@@ -491,14 +667,22 @@ const CoverageManagement = () => {
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-gray-50 border-b">
+                                    <th className="p-2">Network</th>
                                     <th className="p-2">Site ID</th>
-                                    <th className="p-2">Ampli</th>
-                                    <th className="p-2">City</th>
+                                    <th className="p-2">Ampli Lat</th>
+                                    <th className="p-2">Ampli Long</th>
+                                    <th className="p-2">Locality</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {importPreview.slice(0, 50).map((r, i) => (
-                                    <tr key={i} className="border-b"><td className="p-2">{r.siteId}</td><td className="p-2">{r.ampli}</td><td className="p-2">{r.cityTown}</td></tr>
+                                    <tr key={i} className="border-b">
+                                        <td className="p-2">{r.networkType}</td>
+                                        <td className="p-2">{r.siteId}</td>
+                                        <td className="p-2">{r.ampliLat}</td>
+                                        <td className="p-2">{r.ampliLong}</td>
+                                        <td className="p-2">{r.locality}</td>
+                                    </tr>
                                 ))}
                             </tbody>
                         </table>

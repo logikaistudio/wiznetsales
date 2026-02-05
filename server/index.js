@@ -4,6 +4,7 @@ import db from './db.js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -70,9 +71,8 @@ app.get('/api/coverage', async (req, res) => {
         if (search) {
             const searchClause = ` WHERE 
         site_id ILIKE $1 OR 
-        ampli ILIKE $1 OR 
-        city_town ILIKE $1 OR 
-        cluster_id ILIKE $1`;
+        locality ILIKE $1 OR 
+        network_type ILIKE $1`;
             queryText += searchClause;
             countQueryText += searchClause;
             queryParams.push(`%${search}%`);
@@ -88,25 +88,11 @@ app.get('/api/coverage', async (req, res) => {
         res.json({
             data: dataResponse.rows.map(row => ({
                 id: row.id,
-                siteId: row.site_id,
-                ampli: row.ampli,
-                clusterId: row.cluster_id,
-                cityTown: row.city_town,
-                kecamatan: row.kecamatan,
-                kelurahan: row.kelurahan,
                 networkType: row.network_type,
-                fibernode: row.fibernode,
-                fibernodeDesc: row.fibernode_desc,
-                areaLat: parseFloat(row.area_lat),
-                areaLong: parseFloat(row.area_long),
+                siteId: row.site_id,
                 ampliLat: parseFloat(row.ampli_lat),
                 ampliLong: parseFloat(row.ampli_long),
-                location: row.location,
-                streetName: row.street_name,
-                streetBlock: row.street_block,
-                streetNo: row.street_no,
-                rtrw: row.rtrw,
-                dwelling: row.dwelling,
+                locality: row.locality,
                 status: row.status
             })),
             pagination: {
@@ -127,18 +113,17 @@ app.post('/api/coverage', async (req, res) => {
         const item = req.body;
         const query = `
             INSERT INTO coverage_sites (
-                site_id, ampli, cluster_id, city_town, kecamatan, kelurahan, 
-                network_type, fibernode, fibernode_desc, area_lat, area_long,
-                ampli_lat, ampli_long, location, street_name, street_block, 
-                street_no, rtrw, dwelling, status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+                network_type, site_id, ampli_lat, ampli_long, locality, status
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
         `;
         const values = [
-            item.siteId, item.ampli, item.clusterId, item.cityTown, item.kecamatan, item.kelurahan,
-            item.networkType, item.fibernode, item.fibernodeDesc, item.areaLat || 0, item.areaLong || 0,
-            item.ampliLat || 0, item.ampliLong || 0, item.location, item.streetName, item.streetBlock,
-            item.streetNo, item.rtrw, item.dwelling, item.status || 'Active'
+            item.networkType || 'HFC',
+            item.siteId,
+            item.ampliLat || 0,
+            item.ampliLong || 0,
+            item.locality,
+            item.status || 'Active'
         ];
 
         const result = await db.query(query, values);
@@ -155,17 +140,16 @@ app.put('/api/coverage/:id', async (req, res) => {
         const item = req.body;
         const query = `
             UPDATE coverage_sites SET
-                site_id=$1, ampli=$2, cluster_id=$3, city_town=$4, kecamatan=$5, kelurahan=$6, 
-                network_type=$7, fibernode=$8, fibernode_desc=$9, area_lat=$10, area_long=$11,
-                ampli_lat=$12, ampli_long=$13, location=$14, street_name=$15, street_block=$16, 
-                street_no=$17, rtrw=$18, dwelling=$19, status=$20
-            WHERE id = $21
+                network_type=$1, site_id=$2, ampli_lat=$3, ampli_long=$4, locality=$5, status=$6
+            WHERE id = $7
         `;
         const values = [
-            item.siteId, item.ampli, item.clusterId, item.cityTown, item.kecamatan, item.kelurahan,
-            item.networkType, item.fibernode, item.fibernodeDesc, item.areaLat || 0, item.areaLong || 0,
-            item.ampliLat || 0, item.ampliLong || 0, item.location, item.streetName, item.streetBlock,
-            item.streetNo, item.rtrw, item.dwelling, item.status || 'Active',
+            item.networkType || 'HFC',
+            item.siteId,
+            item.ampliLat || 0,
+            item.ampliLong || 0,
+            item.locality,
+            item.status || 'Active',
             id
         ];
 
@@ -205,19 +189,18 @@ app.post('/api/coverage/bulk', async (req, res) => {
         }
         const query = `
       INSERT INTO coverage_sites (
-        site_id, ampli, cluster_id, city_town, kecamatan, kelurahan, 
-        network_type, fibernode, fibernode_desc, area_lat, area_long,
-        ampli_lat, ampli_long, location, street_name, street_block, 
-        street_no, rtrw, dwelling, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        network_type, site_id, ampli_lat, ampli_long, locality, status
+      ) VALUES ($1, $2, $3, $4, $5, $6)
     `;
         let count = 0;
         for (const item of data) {
             await db.query(query, [
-                item.siteId, item.ampli, item.clusterId, item.cityTown, item.kecamatan, item.kelurahan,
-                item.networkType, item.fibernode, item.fibernodeDesc, item.areaLat || 0, item.areaLong || 0,
-                item.ampliLat || 0, item.ampliLong || 0, item.location, item.streetName, item.streetBlock,
-                item.streetNo, item.rtrw, item.dwelling, item.status || 'Active'
+                item.networkType || 'HFC',
+                item.siteId,
+                item.ampliLat || 0,
+                item.ampliLong || 0,
+                item.locality,
+                item.status || 'Active'
             ]);
             count++;
         }
@@ -636,7 +619,7 @@ app.post('/api/settings', async (req, res) => {
         await db.query(`
             INSERT INTO system_settings (key, value, updated_at)
             VALUES ($1, $2, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = DISTINCTFrom.value, updated_at = NOW()
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
         `, [key, String(value)]);
         res.json({ message: 'Setting saved' });
     } catch (err) {
@@ -710,7 +693,8 @@ app.get('/api/customers', async (req, res) => {
             status: row.status,
             isActive: row.is_active !== false,
             prospectDate: row.prospect_date,
-            openTicketCount: row.open_ticket_count || 0
+            openTicketCount: row.open_ticket_count || 0,
+            fat: row.fat
         })));
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -727,8 +711,8 @@ app.post('/api/customers', async (req, res) => {
             INSERT INTO customers (
                 customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
                 latitude, longitude, phone, email, product_id, product_name, rfs_date,
-                files, sales_id, sales_name, status, prospect_date, is_active
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                files, sales_id, sales_name, status, prospect_date, is_active, fat
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
             RETURNING id
         `;
 
@@ -736,7 +720,7 @@ app.post('/api/customers', async (req, res) => {
             customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date(),
-            item.isActive !== false
+            item.isActive !== false, item.fat
         ];
 
         const result = await db.query(query, values);
@@ -756,15 +740,15 @@ app.put('/api/customers/:id', async (req, res) => {
             UPDATE customers SET
                 customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
                 latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
-                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21
-            WHERE id = $22
+                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22
+            WHERE id = $23
         `;
 
         const values = [
             item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
-            item.isActive !== false,
+            item.isActive !== false, item.fat,
             id
         ];
 
@@ -1185,6 +1169,174 @@ app.get('/api/helpdesk-agents', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// ==========================================
+// AUTHENTICATION
+// ==========================================
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        const passwordHash = hashPassword(password);
+
+        // Check against users table
+        const result = await db.query(
+            'SELECT id, username, email, full_name, role FROM users WHERE (username = $1 OR email = $1) AND password_hash = $2 AND is_active = true',
+            [username, passwordHash]
+        );
+
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+            // Update last login
+            await db.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+            res.json({ success: true, user });
+        } else {
+            res.status(401).json({ error: 'Invalid credentials or inactive account' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// USER MANAGEMENT
+// ==========================================
+
+const hashPassword = (password) => {
+    return crypto.createHash('sha256').update(password).digest('hex');
+};
+
+app.get('/api/users', async (req, res) => {
+    try {
+        const result = await db.query('SELECT id, username, email, full_name, role, is_active, last_login, created_at FROM users ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/users', async (req, res) => {
+    try {
+        const { username, email, password, fullName, role } = req.body;
+        const passwordHash = hashPassword(password);
+
+        const query = `
+            INSERT INTO users (username, email, password_hash, full_name, role)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, username
+        `;
+        const result = await db.query(query, [username, email, passwordHash, fullName, role || 'user']);
+        res.json({ message: 'User created', user: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { username, email, password, fullName, role, isActive } = req.body;
+
+        let query = 'UPDATE users SET username=$1, email=$2, full_name=$3, role=$4, is_active=$5';
+        const values = [username, email, fullName, role, isActive];
+        let idx = 6;
+
+        if (password) {
+            query += `, password_hash=$${idx}`;
+            values.push(hashPassword(password));
+            idx++;
+        }
+
+        query += ` WHERE id=$${idx}`;
+        values.push(id);
+
+        await db.query(query, values);
+        res.json({ message: 'User updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM users WHERE id=$1', [req.params.id]);
+        res.json({ message: 'User deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// ROLES MANAGEMENT
+// ==========================================
+
+app.get('/api/roles', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM roles ORDER BY id ASC');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/roles/:id', async (req, res) => {
+    try {
+        const { isActive, permissions } = req.body;
+
+        if (permissions !== undefined) {
+            // Update permissions
+            await db.query(
+                'UPDATE roles SET permissions = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [JSON.stringify(permissions), req.params.id]
+            );
+        } else if (isActive !== undefined) {
+            // Update active status only
+            await db.query(
+                'UPDATE roles SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [isActive, req.params.id]
+            );
+        }
+
+        res.json({ message: 'Role updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// SYSTEM SETTINGS
+// ==========================================
+
+app.get('/api/settings', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM system_settings');
+        // Convert array to object
+        const settings = {};
+        result.rows.forEach(row => {
+            settings[row.key] = row.value;
+        });
+        res.json(settings);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/settings', async (req, res) => {
+    try {
+        const settings = req.body;
+        // Upsert each setting
+        for (const [key, value] of Object.entries(settings)) {
+            await db.query(`
+                INSERT INTO system_settings (key, value, updated_at) 
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            `, [key, value]);
+        }
+        res.json({ message: 'Settings updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {

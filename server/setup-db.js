@@ -26,33 +26,20 @@ const setupSchema = async () => {
     await client.query('BEGIN');
 
     const createTableQuery = `
-      -- Coverage Sites
+      -- Coverage Sites (Simplified Structure)
       CREATE TABLE IF NOT EXISTS coverage_sites (
         id SERIAL PRIMARY KEY,
-        site_id VARCHAR(100),
-        ampli VARCHAR(100),
-        cluster_id VARCHAR(100),
-        city_town VARCHAR(100),
-        kecamatan VARCHAR(100),
-        kelurahan VARCHAR(100),
         network_type VARCHAR(50) DEFAULT 'HFC',
-        fibernode VARCHAR(100),
-        fibernode_desc TEXT,
-        area_lat DECIMAL(10, 8),
-        area_long DECIMAL(11, 8),
+        site_id VARCHAR(100) NOT NULL,
         ampli_lat DECIMAL(10, 8),
         ampli_long DECIMAL(11, 8),
-        location TEXT,
-        street_name TEXT,
-        street_block VARCHAR(50),
-        street_no VARCHAR(50),
-        rtrw VARCHAR(50),
-        dwelling VARCHAR(50),
+        locality VARCHAR(200),
         status VARCHAR(20) DEFAULT 'Active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_coverage_site_id ON coverage_sites(site_id);
-      CREATE INDEX IF NOT EXISTS idx_coverage_ampli ON coverage_sites(ampli);
+      CREATE INDEX IF NOT EXISTS idx_coverage_locality ON coverage_sites(locality);
+      CREATE INDEX IF NOT EXISTS idx_coverage_network ON coverage_sites(network_type);
 
       -- Person In Charge
       CREATE TABLE IF NOT EXISTS person_in_charge (

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
-import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Button from '../components/ui/Button';
 import 'leaflet/dist/leaflet.css';
@@ -69,6 +70,7 @@ const MapEvents = ({ onMapClick, isPicking }) => {
 };
 
 const Coverage = () => {
+    const navigate = useNavigate();
     const [coveragePoints, setCoveragePoints] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [analyzedCustomers, setAnalyzedCustomers] = useState([]);
@@ -298,6 +300,13 @@ const Coverage = () => {
                         <p className="text-xs text-gray-600 mt-1">
                             Distance to Node: <strong>{Math.round(manualCheckPoint.nearestDistance)} m</strong>
                         </p>
+                        <Button
+                            size="sm"
+                            className="mt-3 w-full text-xs shadow-sm"
+                            onClick={() => navigate('/prospect', { state: manualCheckPoint })}
+                        >
+                            <Plus className="w-3 h-3 mr-1" /> Add to Prospect
+                        </Button>
                     </div>
                 )}
 

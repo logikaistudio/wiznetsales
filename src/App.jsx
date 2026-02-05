@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Layout from './layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Achievement from './pages/Achievement';
@@ -12,30 +12,87 @@ import CoverageManagement from './pages/master-data/CoverageManagement';
 import ProductManagement from './pages/master-data/ProductManagement';
 import Promo from './pages/master-data/Promo';
 import HotNews from './pages/master-data/HotNews';
+import UserManagement from './pages/master-data/UserManagement';
+import Login from './pages/Login';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Loader2 } from 'lucide-react';
+
+const ProtectedRoute = ({ children }) => {
+  const { user, loading, canAccessRoute } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <div className="h-screen w-full flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 animate-spin text-blue-900" /></div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Basic route protection based on role
+  if (!canAccessRoute(location.pathname)) {
+    // If user tries to access restricted page, redirect to their home or show unauthorized
+    // Simple fallback: redirect to home
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+// Separate Master Data protection logic
+const MasterDataRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+
+  if (!user || (user.role !== 'admin' && user.role !== 'leader' && user.role !== 'manager')) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
+
+// Separate Admin only protection logic
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+
+  if (!user || user.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="achievement" element={<Achievement />} />
-          <Route path="prospect" element={<Prospect />} />
-          <Route path="coverage" element={<Coverage />} />
-          <Route path="omniflow" element={<Omniflow />} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
-          <Route path="master-data">
-            <Route index element={<Navigate to="person-incharge" replace />} />
-            <Route path="person-incharge" element={<PersonIncharge />} />
-            <Route path="targets" element={<Targets />} />
-            <Route path="coverage-management" element={<CoverageManagement />} />
-            <Route path="product-management" element={<ProductManagement />} />
-            <Route path="promo" element={<Promo />} />
-            <Route path="hotnews" element={<HotNews />} />
+          <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route index element={<Dashboard />} />
+            <Route path="achievement" element={<Achievement />} />
+            <Route path="prospect" element={<Prospect />} />
+            <Route path="coverage" element={<Coverage />} />
+
+            {/* Omniflow restricted from Sales based on request "permissions" implied by "only view menu..." list */}
+            <Route path="omniflow" element={
+              <MasterDataRoute><Omniflow /></MasterDataRoute>
+            } />
+
+            <Route path="master-data">
+              <Route index element={<Navigate to="person-incharge" replace />} />
+              <Route path="person-incharge" element={<MasterDataRoute><PersonIncharge /></MasterDataRoute>} />
+              <Route path="targets" element={<MasterDataRoute><Targets /></MasterDataRoute>} />
+              <Route path="coverage-management" element={<MasterDataRoute><CoverageManagement /></MasterDataRoute>} />
+              <Route path="product-management" element={<MasterDataRoute><ProductManagement /></MasterDataRoute>} />
+              <Route path="promo" element={<MasterDataRoute><Promo /></MasterDataRoute>} />
+              <Route path="hotnews" element={<MasterDataRoute><HotNews /></MasterDataRoute>} />
+              <Route path="user-management" element={<AdminRoute><UserManagement /></AdminRoute>} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </Router>
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 
