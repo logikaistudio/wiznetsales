@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMapEvents } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
 import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -230,7 +230,10 @@ const Coverage = () => {
                             onClick={() => {
                                 setIsPickingLocation(!isPickingLocation);
                                 setShowInputForm(false);
-                                setManualCheckPoint(null);
+                                // Only reset if we're starting a new pick
+                                if (!isPickingLocation) {
+                                    setManualCheckPoint(null);
+                                }
                             }}
                         >
                             📍 Pick on Map
@@ -300,13 +303,26 @@ const Coverage = () => {
                         <p className="text-xs text-gray-600 mt-1">
                             Distance to Node: <strong>{Math.round(manualCheckPoint.nearestDistance)} m</strong>
                         </p>
-                        <Button
-                            size="sm"
-                            className="mt-3 w-full text-xs shadow-sm"
-                            onClick={() => navigate('/prospect', { state: manualCheckPoint })}
-                        >
-                            <Plus className="w-3 h-3 mr-1" /> Add to Prospect
-                        </Button>
+                        <div className="flex gap-2 mt-3 w-full">
+                            <Button
+                                size="sm"
+                                className="flex-1 text-xs shadow-sm"
+                                onClick={() => navigate('/prospect', { state: manualCheckPoint })}
+                            >
+                                <Plus className="w-3 h-3 mr-1" /> Add to Prospect
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs"
+                                onClick={() => {
+                                    setManualCheckPoint(null);
+                                    setIsPickingLocation(false);
+                                }}
+                            >
+                                Clear
+                            </Button>
+                        </div>
                     </div>
                 )}
 
@@ -360,24 +376,60 @@ const Coverage = () => {
                     )}
 
                     {/* Render Coverage Points (Network Nodes) */}
-                    {coveragePoints.filter(p => p.ampliLat).map((point, idx) => (
-                        <Circle
-                            key={`cov-${point.id || idx}`}
-                            center={[point.ampliLat, point.ampliLong]}
-                            pathOptions={{ fillColor: '#0ea5e9', color: '#0ea5e9', weight: 1, opacity: 0.3, fillOpacity: 0.1 }}
-                            radius={CONSTANTS.COVERAGE_RADIUS_METERS}
-                        >
-                            <Marker position={[point.ampliLat, point.ampliLong]} icon={anchorIcon}>
-                                <Popup>
-                                    <div className="text-xs font-sans">
-                                        <p className="font-bold">{point.siteId}</p>
-                                        <p>{point.ampli}</p>
-                                        <p className="text-gray-500">{point.networkType} Node</p>
-                                    </div>
-                                </Popup>
-                            </Marker>
-                        </Circle>
-                    ))}
+                    {coveragePoints.filter(p => p.ampliLat).map((point, idx) => {
+                        // If point has polygon data, render as Polygon
+                        if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
+                            return (
+                                <Polygon
+                                    key={`cov-poly-${point.id || idx}`}
+                                    positions={point.polygonData}
+                                    pathOptions={{
+                                        fillColor: '#ef4444',
+                                        color: '#ef4444',
+                                        weight: 2,
+                                        opacity: 0.8,
+                                        fillOpacity: 0.15
+                                    }}
+                                >
+                                    <Popup>
+                                        <div className="text-xs font-sans space-y-1 min-w-[150px]">
+                                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
+                                                <span className="text-red-600 font-semibold text-[10px]">Area</span>
+                                            </div>
+                                            <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
+                                            {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
+                                            <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
+                                        </div>
+                                    </Popup>
+                                </Polygon>
+                            );
+                        }
+
+                        // Default: render as Circle with marker
+                        return (
+                            <Circle
+                                key={`cov-${point.id || idx}`}
+                                center={[point.ampliLat, point.ampliLong]}
+                                pathOptions={{ fillColor: '#0ea5e9', color: '#0ea5e9', weight: 1, opacity: 0.3, fillOpacity: 0.1 }}
+                                radius={CONSTANTS.COVERAGE_RADIUS_METERS}
+                            >
+                                <Marker position={[point.ampliLat, point.ampliLong]} icon={anchorIcon}>
+                                    <Popup>
+                                        <div className="text-xs font-sans space-y-1 min-w-[150px]">
+                                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
+                                                <span className="text-sky-600 font-semibold text-[10px]">Node</span>
+                                            </div>
+                                            <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
+                                            {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
+                                            <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            </Circle>
+                        );
+                    })}
 
                     {/* Render Customer Points */}
                     {analyzedCustomers.map((cust, idx) => (
@@ -431,10 +483,16 @@ const Coverage = () => {
                     <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
                     <span>Uncovered</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full bg-sky-500 border-2 border-white shadow-sm"></div>
                     <span>Node (250m)</span>
                 </div>
+                {coveragePoints.some(p => p.polygonData && Array.isArray(p.polygonData) && p.polygonData.length > 0) && (
+                    <div className="flex items-center gap-2 border-t pt-1 mt-1">
+                        <div className="w-3 h-3 border-2 border-red-500 bg-red-500/20" style={{ borderRadius: '2px' }}></div>
+                        <span>Coverage Area</span>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -97,12 +97,11 @@ const Prospect = () => {
             if (!isNaN(lat) && !isNaN(lng)) {
                 if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
 
-                // If we already have a status from redirection (checked=true), skip one automatic check to respect the passed data
-                // checking valid status prevents overwrite
+                // Skip auto-check if we already have a valid status from navigation (checked=true with node data)
+                // This prevents overwriting the status passed from Coverage page
                 if (coverageStatus.checked && coverageStatus.node && !coverageStatus.loading) {
-                    // But we must ensure it matches current coords. 
-                    // Roughly simplest is just let it re-check or check if coords match?
-                    // deciding to just let it re-check for consistency, but set initial state below.
+                    // Status already set from Coverage page, don't re-check automatically
+                    return;
                 }
 
                 setCoverageStatus(prev => ({ ...prev, loading: true, message: 'Checking coverage...' }));

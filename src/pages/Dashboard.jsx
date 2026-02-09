@@ -69,7 +69,11 @@ const Dashboard = () => {
         try {
             const res = await fetch('/api/dashboard/stats');
             const data = await res.json();
-            setStats(data);
+            if (res.ok) {
+                setStats(data);
+            } else {
+                console.error('Failed to fetch dashboard stats:', data.error);
+            }
         } catch (error) {
             console.error('Error fetching dashboard stats:', error);
         } finally {

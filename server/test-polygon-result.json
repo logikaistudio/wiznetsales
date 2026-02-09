@@ -1,0 +1,24 @@
+{
+  "insertSuccess": true,
+  "insertedId": 2527,
+  "verifySuccess": true,
+  "polygonData": [
+    [
+      -6.2088,
+      106.8456
+    ],
+    [
+      -6.209,
+      106.846
+    ],
+    [
+      -6.2092,
+      106.8455
+    ],
+    [
+      -6.2088,
+      106.8456
+    ]
+  ],
+  "allPassed": true
+}

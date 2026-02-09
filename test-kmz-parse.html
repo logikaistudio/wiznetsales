@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KMZ Parser Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://unpkg.com/@tmcw/togeojson@5.8.0/dist/togeojson.umd.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .drop-zone { border: 3px dashed #ccc; padding: 40px; text-align: center; margin: 20px 0; border-radius: 10px; }
+        .drop-zone.dragover { border-color: #4CAF50; background: #e8f5e9; }
+        pre { background: #f5f5f5; padding: 15px; overflow: auto; max-height: 400px; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        h3 { margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+        .stat { display: inline-block; padding: 10px 20px; margin: 5px; background: #e3f2fd; border-radius: 5px; }
+        .stat.polygon { background: #f3e5f5; }
+        .stat.point { background: #e8f5e9; }
+    </style>
+</head>
+<body>
+    <h1>🗺️ KMZ/KML Parser Test Tool</h1>
+    <p>Drop your KMZ or KML file here to test parsing and see what geometry types are extracted.</p>
+    
+    <div class="drop-zone" id="dropZone">
+        <p><strong>Drop KMZ/KML file here</strong></p>
+        <p>or</p>
+        <input type="file" id="fileInput" accept=".kmz,.kml" />
+    </div>
+    
+    <div id="results"></div>
+    
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const results = document.getElementById('results');
+        
+        // Drag and drop handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) processFile(file);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) processFile(file);
+        });
+        
+        async function processFile(file) {
+            results.innerHTML = '<p class="info">Processing file: ' + file.name + '...</p>';
+            
+            try {
+                let kmlContent;
+                
+                if (file.name.endsWith('.kmz')) {
+                    // Unzip KMZ
+                    const arrayBuffer = await file.arrayBuffer();
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+                    
+                    let kmlFile = null;
+                    for (const filename of Object.keys(zip.files)) {
+                        console.log('Found in ZIP:', filename);
+                        if (filename.endsWith('.kml')) {
+                            kmlFile = filename;
+                            break;
+                        }
+                    }
+                    
+                    if (!kmlFile) {
+                        results.innerHTML = '<p class="error">No KML file found in KMZ!</p>';
+                        return;
+                    }
+                    
+                    results.innerHTML += '<p class="info">Found KML file: ' + kmlFile + '</p>';
+                    kmlContent = await zip.files[kmlFile].async('string');
+                } else {
+                    // Direct KML
+                    kmlContent = await file.text();
+                }
+                
+                // Show raw KML snippet
+                results.innerHTML += '<h3>📄 Raw KML Content (first 2000 chars)</h3>';
+                results.innerHTML += '<pre>' + escapeHtml(kmlContent.substring(0, 2000)) + '...</pre>';
+                
+                // Parse KML to GeoJSON
+                const parser = new DOMParser();
+                const kmlDoc = parser.parseFromString(kmlContent, 'text/xml');
+                
+                // Check for parse errors
+                const parseError = kmlDoc.querySelector('parsererror');
+                if (parseError) {
+                    results.innerHTML += '<p class="error">XML Parse Error: ' + parseError.textContent + '</p>';
+                    return;
+                }
+                
+                // Use toGeoJSON library
+                const geoJson = toGeoJSON.kml(kmlDoc);
+                
+                // Analyze features
+                results.innerHTML += '<h3>📊 GeoJSON Analysis</h3>';
+                
+                if (!geoJson.features || geoJson.features.length === 0) {
+                    results.innerHTML += '<p class="error">No features found in GeoJSON!</p>';
+                    results.innerHTML += '<h4>Raw GeoJSON:</h4>';
+                    results.innerHTML += '<pre>' + JSON.stringify(geoJson, null, 2).substring(0, 5000) + '</pre>';
+                    return;
+                }
+                
+                // Count geometry types
+                const typeCounts = {};
+                geoJson.features.forEach(f => {
+                    const type = f.geometry?.type || 'Unknown';
+                    typeCounts[type] = (typeCounts[type] || 0) + 1;
+                });
+                
+                results.innerHTML += '<p><strong>Total Features:</strong> ' + geoJson.features.length + '</p>';
+                results.innerHTML += '<div>';
+                for (const [type, count] of Object.entries(typeCounts)) {
+                    const cls = type.includes('Polygon') ? 'polygon' : 'point';
+                    results.innerHTML += '<span class="stat ' + cls + '">' + type + ': ' + count + '</span>';
+                }
+                results.innerHTML += '</div>';
+                
+                // Show sample polygon
+                const polygonFeature = geoJson.features.find(f => 
+                    f.geometry?.type === 'Polygon' || f.geometry?.type === 'MultiPolygon'
+                );
+                
+                if (polygonFeature) {
+                    results.innerHTML += '<h3 class="success">✅ Polygon Found!</h3>';
+                    results.innerHTML += '<p><strong>Name:</strong> ' + (polygonFeature.properties?.name || 'N/A') + '</p>';
+                    
+                    const coords = polygonFeature.geometry.type === 'Polygon' 
+                        ? polygonFeature.geometry.coordinates[0]
+                        : polygonFeature.geometry.coordinates[0][0];
+                    
+                    results.innerHTML += '<p><strong>Coordinate Points:</strong> ' + coords.length + '</p>';
+                    results.innerHTML += '<p><strong>First 5 coordinates:</strong></p>';
+                    results.innerHTML += '<pre>' + JSON.stringify(coords.slice(0, 5), null, 2) + '</pre>';
+                    
+                    // Calculate center
+                    let sumLat = 0, sumLng = 0;
+                    coords.forEach(c => {
+                        sumLng += c[0];
+                        sumLat += c[1];
+                    });
+                    const center = [sumLat / coords.length, sumLng / coords.length];
+                    results.innerHTML += '<p><strong>Calculated Center:</strong> [' + center[0].toFixed(6) + ', ' + center[1].toFixed(6) + ']</p>';
+                    
+                    // Show what we would save
+                    const polygonCoords = coords.map(c => [c[1], c[0]]); // [lat, lng]
+                    results.innerHTML += '<h3>💾 Data yang akan disimpan:</h3>';
+                    results.innerHTML += '<pre>' + JSON.stringify({
+                        siteId: polygonFeature.properties?.name || 'AREA-1',
+                        ampliLat: center[0],
+                        ampliLong: center[1],
+                        polygonData: polygonCoords.slice(0, 10),
+                        polygonPointsTotal: polygonCoords.length
+                    }, null, 2) + '</pre>';
+                } else {
+                    results.innerHTML += '<h3 class="error">❌ No Polygon Features Found</h3>';
+                    results.innerHTML += '<p>The KMZ only contains: ' + Object.keys(typeCounts).join(', ') + '</p>';
+                }
+                
+                // Show first 3 features
+                results.innerHTML += '<h3>📋 First 3 Features (raw)</h3>';
+                results.innerHTML += '<pre>' + JSON.stringify(geoJson.features.slice(0, 3), null, 2) + '</pre>';
+                
+            } catch (error) {
+                results.innerHTML += '<p class="error">Error: ' + error.message + '</p>';
+                console.error(error);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

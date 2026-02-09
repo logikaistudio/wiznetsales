@@ -54,6 +54,133 @@ const ensureServiceTypeColumn = async () => {
 ensureServiceTypeColumn();
 
 // ==========================================
+// ROLES MANAGEMENT
+// ==========================================
+
+// Auto-create roles table if not exists
+const ensureRolesTable = async () => {
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS roles (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL UNIQUE,
+                description TEXT,
+                permissions JSONB DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Insert default roles if empty
+        const countResult = await db.query('SELECT COUNT(*) FROM roles');
+        if (parseInt(countResult.rows[0].count) === 0) {
+            await db.query(`
+                INSERT INTO roles (name, description, permissions) VALUES
+                ('Admin', 'Full system access', '["all"]'),
+                ('Sales', 'Sales and prospect management', '["prospects", "customers", "coverage"]'),
+                ('Manager', 'View reports and manage team', '["reports", "prospects", "customers"]')
+                ON CONFLICT (name) DO NOTHING
+            `);
+            console.log('Default roles created');
+        }
+        console.log('Ensured roles table exists');
+    } catch (err) {
+        console.error('Roles table migration error:', err);
+    }
+};
+ensureRolesTable();
+
+app.get('/api/roles', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM roles ORDER BY id');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching roles:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/roles', async (req, res) => {
+    try {
+        const { name, description, permissions, data_scope, allowed_clusters, allowed_provinces } = req.body;
+        const result = await db.query(
+            `INSERT INTO roles (
+                name, description, permissions, data_scope, allowed_clusters, allowed_provinces
+            ) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [
+                name,
+                description,
+                JSON.stringify(permissions || []),
+                data_scope || 'all',
+                JSON.stringify(allowed_clusters || []),
+                JSON.stringify(allowed_provinces || [])
+            ]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/roles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, permissions, isActive, data_scope, allowed_clusters, allowed_provinces } = req.body;
+
+        // Dynamic update query
+        let query = 'UPDATE roles SET updated_at=NOW()';
+        const values = [];
+        let paramCount = 1;
+
+        if (name) { query += `, name=$${paramCount++}`; values.push(name); }
+        if (description !== undefined) { query += `, description=$${paramCount++}`; values.push(description); }
+        if (permissions) { query += `, permissions=$${paramCount++}`; values.push(JSON.stringify(permissions)); }
+        if (isActive !== undefined) { query += `, is_active=$${paramCount++}`; values.push(isActive); }
+        if (data_scope) { query += `, data_scope=$${paramCount++}`; values.push(data_scope); }
+        if (allowed_clusters) { query += `, allowed_clusters=$${paramCount++}`; values.push(JSON.stringify(allowed_clusters)); }
+        if (allowed_provinces) { query += `, allowed_provinces=$${paramCount++}`; values.push(JSON.stringify(allowed_provinces)); }
+
+        query += ` WHERE id=$${paramCount} RETURNING *`;
+        values.push(id);
+
+        const result = await db.query(query, values);
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/clusters', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM clusters ORDER BY name');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching clusters:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/provinces', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM provinces ORDER BY name');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching provinces:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/roles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM roles WHERE id = $1', [id]);
+        res.json({ message: 'Role deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
 // COVERAGE MANAGEMENT
 // ==========================================
 
@@ -93,7 +220,13 @@ app.get('/api/coverage', async (req, res) => {
                 ampliLat: parseFloat(row.ampli_lat),
                 ampliLong: parseFloat(row.ampli_long),
                 locality: row.locality,
-                status: row.status
+                status: row.status,
+                homepassId: row.homepass_id || null,
+                createdAt: row.created_at,
+                // JSONB returns object directly, but handle string case too
+                polygonData: row.polygon_data
+                    ? (typeof row.polygon_data === 'string' ? JSON.parse(row.polygon_data) : row.polygon_data)
+                    : null
             })),
             pagination: {
                 page,
@@ -140,8 +273,8 @@ app.put('/api/coverage/:id', async (req, res) => {
         const item = req.body;
         const query = `
             UPDATE coverage_sites SET
-                network_type=$1, site_id=$2, ampli_lat=$3, ampli_long=$4, locality=$5, status=$6
-            WHERE id = $7
+                network_type=$1, site_id=$2, ampli_lat=$3, ampli_long=$4, locality=$5, status=$6, homepass_id=$7
+            WHERE id = $8
         `;
         const values = [
             item.networkType || 'HFC',
@@ -150,6 +283,7 @@ app.put('/api/coverage/:id', async (req, res) => {
             item.ampliLong || 0,
             item.locality,
             item.status || 'Active',
+            item.homepassId || null,
             id
         ];
 
@@ -157,6 +291,7 @@ app.put('/api/coverage/:id', async (req, res) => {
         res.json({ message: 'Site updated' });
     } catch (err) {
         console.error(err);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -164,6 +299,20 @@ app.delete('/api/coverage/all', async (req, res) => {
     try {
         await db.query('TRUNCATE TABLE coverage_sites RESTART IDENTITY');
         res.json({ message: 'All sites deleted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/coverage/bulk-delete', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'Valid IDs array required' });
+        }
+        await db.query('DELETE FROM coverage_sites WHERE id = ANY($1)', [ids]);
+        res.json({ message: 'Selected sites deleted' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -187,26 +336,47 @@ app.post('/api/coverage/bulk', async (req, res) => {
         if (!data || !Array.isArray(data)) {
             throw new Error('Invalid data format');
         }
+
+        console.log(`[Bulk Import] Starting import of ${data.length} items`);
+        console.log(`[Bulk Import] Sample item:`, JSON.stringify(data[0]).substring(0, 500));
+
         const query = `
       INSERT INTO coverage_sites (
-        network_type, site_id, ampli_lat, ampli_long, locality, status
-      ) VALUES ($1, $2, $3, $4, $5, $6)
+        network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `;
         let count = 0;
+        let errors = [];
+
         for (const item of data) {
-            await db.query(query, [
-                item.networkType || 'HFC',
-                item.siteId,
-                item.ampliLat || 0,
-                item.ampliLong || 0,
-                item.locality,
-                item.status || 'Active'
-            ]);
-            count++;
+            try {
+                const polygonJson = item.polygonData ? JSON.stringify(item.polygonData) : null;
+
+                await db.query(query, [
+                    item.networkType || 'HFC',
+                    item.siteId || `SITE-${count + 1}`,
+                    item.ampliLat || 0,
+                    item.ampliLong || 0,
+                    item.locality || '',
+                    item.status || 'Active',
+                    polygonJson,
+                    item.homepassId || null
+                ]);
+                count++;
+            } catch (itemErr) {
+                console.error(`[Bulk Import] Error inserting item ${count}:`, itemErr.message);
+                errors.push({ index: count, error: itemErr.message, siteId: item.siteId });
+                if (errors.length > 5) {
+                    throw new Error(`Too many errors. First error: ${errors[0].error}`);
+                }
+            }
         }
-        res.json({ message: `Imported ${count} rows` });
+
+        console.log(`[Bulk Import] Completed. Inserted ${count} rows, ${errors.length} errors`);
+        res.json({ message: `Imported ${count} rows`, errors: errors.length > 0 ? errors : undefined });
     } catch (err) {
-        console.error(err);
+        console.error('[Bulk Import] Fatal error:', err.message);
+        console.error('[Bulk Import] Stack:', err.stack);
         res.status(500).json({ error: err.message });
     }
 });

@@ -40,12 +40,28 @@ const UserManagement = () => {
     const [roles, setRoles] = useState([]);
     const [editingRole, setEditingRole] = useState(null);
     const [roleModalOpen, setRoleModalOpen] = useState(false);
+    const [roleFormData, setRoleFormData] = useState({ name: '', description: '', permissions: [] });
+
+    // Simple permission options
+    const permissionOptions = [
+        { value: 'all', label: 'Full Access (All Permissions)' },
+        { value: 'view', label: 'View Only' },
+        { value: 'prospects', label: 'Prospects' },
+        { value: 'customers', label: 'Customers' },
+        { value: 'coverage', label: 'Coverage' },
+        { value: 'reports', label: 'Reports' },
+        { value: 'settings', label: 'Settings' },
+    ];
 
     // --- SETTINGS STATE ---
     const [appSettings, setAppSettings] = useState({ app_name: '', app_logo: '', app_description: '' });
 
     // --- USER PERMISSIONS VIEW STATE ---
     const [viewingUserPermissions, setViewingUserPermissions] = useState(null);
+
+    // --- DATA SCOPE STATE ---
+    const [clusters, setClusters] = useState([]);
+    const [provinces, setProvinces] = useState([]);
 
     // --- DATA FETCHING ---
     const fetchUsers = async () => {
@@ -69,9 +85,20 @@ const UserManagement = () => {
         } catch (e) { console.error(e); }
     };
 
+    const fetchDataScopes = async () => {
+        try {
+            const [clustersRes, provincesRes] = await Promise.all([
+                fetch('/api/clusters'),
+                fetch('/api/provinces')
+            ]);
+            if (clustersRes.ok) setClusters(await clustersRes.json());
+            if (provincesRes.ok) setProvinces(await provincesRes.json());
+        } catch (e) { console.error(e); }
+    };
+
     useEffect(() => {
         setIsLoading(true);
-        Promise.all([fetchUsers(), fetchRoles(), fetchSettings()]).finally(() => setIsLoading(false));
+        Promise.all([fetchUsers(), fetchRoles(), fetchSettings(), fetchDataScopes()]).finally(() => setIsLoading(false));
     }, []);
 
     // --- USER HANDLERS ---
@@ -116,45 +143,98 @@ const UserManagement = () => {
     };
 
     // --- ROLE HANDLERS ---
-    const toggleRoleStatus = async (role, status) => {
-        try {
-            await fetch(`/api/roles/${role.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isActive: status })
+    const handleOpenRoleModal = (role = null) => {
+        setEditingRole(role);
+
+        const parseArray = (val) => {
+            if (!val) return [];
+            if (Array.isArray(val)) return val;
+            if (typeof val === 'string') {
+                try { return JSON.parse(val); } catch (e) { return []; }
+            }
+            return [];
+        };
+
+        if (role) {
+            setRoleFormData({
+                name: role.name,
+                description: role.description || '',
+                permissions: parseArray(role.permissions),
+                data_scope: role.data_scope || 'all',
+                allowed_clusters: parseArray(role.allowed_clusters),
+                allowed_provinces: parseArray(role.allowed_provinces)
             });
-            fetchRoles();
-        } catch (e) { alert('Error updating role'); }
+        } else {
+            setRoleFormData({
+                name: '',
+                description: '',
+                permissions: [],
+                data_scope: 'all',
+                allowed_clusters: [],
+                allowed_provinces: []
+            });
+        }
+        setRoleModalOpen(true);
     };
 
-    const updateRolePermission = async (roleId, menu, action, value) => {
+    const toggleArrayItem = (field, value) => {
+        setRoleFormData(prev => {
+            const current = prev[field] || [];
+            if (current.includes(value)) {
+                return { ...prev, [field]: current.filter(item => item !== value) };
+            } else {
+                return { ...prev, [field]: [...current, value] };
+            }
+        });
+    };
+
+    const saveRole = async (e) => {
+        e.preventDefault();
         try {
-            // Find the role
-            const role = roles.find(r => r.id === roleId);
-            if (!role) return;
+            const url = editingRole ? `/api/roles/${editingRole.id}` : '/api/roles';
+            const method = editingRole ? 'PUT' : 'POST';
 
-            // Update permissions object
-            const updatedPermissions = {
-                ...role.permissions,
-                [menu]: {
-                    ...role.permissions[menu],
-                    [action]: value
-                }
-            };
-
-            // Send to backend
-            await fetch(`/api/roles/${roleId}`, {
-                method: 'PUT',
+            await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ permissions: updatedPermissions })
+                body: JSON.stringify(roleFormData)
             });
 
-            // Refresh roles
-            fetchRoles();
+            await fetchRoles();
+            setRoleModalOpen(false);
+            alert('Role saved!');
         } catch (e) {
-            alert('Error updating permission');
+            alert('Error saving role');
             console.error(e);
         }
+    };
+
+    const deleteRole = async (id) => {
+        if (!confirm('Delete this role? Users with this role will need to be reassigned.')) return;
+        try {
+            await fetch(`/api/roles/${id}`, { method: 'DELETE' });
+            await fetchRoles();
+            setRoleModalOpen(false);
+            alert('Role deleted!');
+        } catch (e) {
+            alert('Error deleting role');
+        }
+    };
+
+    const togglePermission = (perm) => {
+        setRoleFormData(prev => {
+            const current = prev.permissions || [];
+            if (current.includes(perm)) {
+                return { ...prev, permissions: current.filter(p => p !== perm) };
+            } else {
+                // If selecting 'all', clear others
+                if (perm === 'all') {
+                    return { ...prev, permissions: ['all'] };
+                }
+                // If selecting other when 'all' is selected, remove 'all'
+                return { ...prev, permissions: [...current.filter(p => p !== 'all'), perm] };
+            }
+        });
     };
 
     // --- SETTINGS HANDLERS ---
@@ -251,83 +331,78 @@ const UserManagement = () => {
                 </div>
             </div>
 
-            {/* SECTION 2: ROLE MANAGEMENT TABLE */}
+            {/* SECTION 2: ROLE MANAGEMENT */}
             <div className="space-y-4">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    <Shield className="w-5 h-5" />
-                    Role Management & Permissions
-                </h2>
-                <p className="text-sm text-gray-500">Manage role permissions for each menu. Each role can have specific access to View, Create, Edit, Delete, Import, and Export actions.</p>
-
-                {roles.map(role => (
-                    <div key={role.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-bold capitalize text-gray-900">{role.name}</h3>
-                                <p className="text-sm text-gray-500">{role.description}</p>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name={`role_status_${role.id}`}
-                                        checked={role.is_active}
-                                        onChange={() => toggleRoleStatus(role, true)}
-                                        className="text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-sm font-medium">Active</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name={`role_status_${role.id}`}
-                                        checked={!role.is_active}
-                                        onChange={() => toggleRoleStatus(role, false)}
-                                        className="text-red-600 focus:ring-red-500"
-                                    />
-                                    <span className="text-sm font-medium">Inactive</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="p-6">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="border-b border-gray-200">
-                                            <th className="text-left py-3 px-4 font-semibold text-gray-700">Menu</th>
-                                            <th className="text-center py-3 px-2 font-semibold text-gray-700">View</th>
-                                            <th className="text-center py-3 px-2 font-semibold text-gray-700">Create</th>
-                                            <th className="text-center py-3 px-2 font-semibold text-gray-700">Edit</th>
-                                            <th className="text-center py-3 px-2 font-semibold text-gray-700">Delete</th>
-                                            <th className="text-center py-3 px-2 font-semibold text-gray-700">Import</th>
-                                            <th className="text-center py-3 px-2 font-semibold text-gray-700">Export</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {Object.entries(role.permissions || {}).map(([menu, perms]) => (
-                                            <tr key={menu} className="hover:bg-gray-50">
-                                                <td className="py-3 px-4 font-medium text-gray-900">
-                                                    {menuLabels[menu] || menu.replace(/_/g, ' ')}
-                                                </td>
-                                                {['view', 'create', 'edit', 'delete', 'import', 'export'].map(action => (
-                                                    <td key={action} className="text-center py-3 px-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={perms[action] || false}
-                                                            onChange={(e) => updateRolePermission(role.id, menu, action, e.target.checked)}
-                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                        />
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <Shield className="w-5 h-5" />
+                            Role Management
+                        </h2>
+                        <p className="text-sm text-gray-500">Manage user roles and their permissions.</p>
                     </div>
-                ))}
+                    <Button onClick={() => handleOpenRoleModal()}>
+                        <Plus className="w-4 h-4 mr-2" /> Add Role
+                    </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {roles.map(role => {
+                        // Parse permissions for display
+                        let perms = [];
+                        if (Array.isArray(role.permissions)) {
+                            perms = role.permissions;
+                        } else if (typeof role.permissions === 'string') {
+                            try { perms = JSON.parse(role.permissions); } catch (e) { perms = []; }
+                        }
+
+                        return (
+                            <div key={role.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                                <div className="p-5">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 capitalize">{role.name}</h3>
+                                            <p className="text-sm text-gray-500">{role.description || 'No description'}</p>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => handleOpenRoleModal(role)}
+                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => deleteRole(role.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <span className="text-xs font-medium text-gray-500 uppercase">Permissions:</span>
+                                        <div className="flex flex-wrap gap-1">
+                                            {perms.length > 0 ? perms.map((perm, idx) => (
+                                                <span
+                                                    key={idx}
+                                                    className={cn(
+                                                        "px-2 py-0.5 rounded-full text-xs font-medium",
+                                                        perm === 'all' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+                                                    )}
+                                                >
+                                                    {perm}
+                                                </span>
+                                            )) : (
+                                                <span className="text-xs text-gray-400 italic">No permissions set</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* SECTION 3: APPLICATION SETTINGS */}
@@ -541,6 +616,112 @@ const UserManagement = () => {
                         </div>
                     </form>
                 )}
+            </Modal>
+
+            {/* ROLE MODAL */}
+            <Modal isOpen={roleModalOpen} onClose={() => setRoleModalOpen(false)} title={editingRole ? 'Edit Role' : 'Add New Role'}>
+                <form onSubmit={saveRole} className="space-y-6">
+                    <Input
+                        label="Role Name"
+                        value={roleFormData.name}
+                        onChange={e => setRoleFormData({ ...roleFormData, name: e.target.value })}
+                        placeholder="e.g. Admin, Sales, Manager"
+                        required
+                    />
+                    <Input
+                        label="Description"
+                        value={roleFormData.description}
+                        onChange={e => setRoleFormData({ ...roleFormData, description: e.target.value })}
+                        placeholder="Brief description of this role"
+                    />
+
+                    <div className="space-y-3">
+                        <span className="text-sm font-medium text-gray-700">Permissions</span>
+                        <p className="text-xs text-gray-500">Select the permissions for this role. "Full Access" grants all permissions.</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {permissionOptions.map(opt => (
+                                <label
+                                    key={opt.value}
+                                    className={cn(
+                                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                                        (roleFormData.permissions || []).includes(opt.value)
+                                            ? "border-blue-500 bg-blue-50"
+                                            : "border-gray-200 hover:border-gray-300"
+                                    )}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={(roleFormData.permissions || []).includes(opt.value)}
+                                        onChange={() => togglePermission(opt.value)}
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700">{opt.label}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <Select
+                            label="Data Scope"
+                            value={roleFormData.data_scope || 'all'}
+                            onChange={e => setRoleFormData({ ...roleFormData, data_scope: e.target.value })}
+                            options={[
+                                { value: 'all', label: 'All Data (National)' },
+                                { value: 'province', label: 'By Province' },
+                                { value: 'cluster', label: 'By Cluster' }
+                            ]}
+                        />
+
+                        {roleFormData.data_scope === 'province' && (
+                            <div className="space-y-2">
+                                <span className="text-sm font-medium text-gray-700">Allowed Provinces</span>
+                                <div className="max-h-40 overflow-y-auto border rounded-lg p-2 grid grid-cols-2 gap-2">
+                                    {provinces.map(prov => (
+                                        <label key={prov.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={(roleFormData.allowed_provinces || []).includes(prov.name)}
+                                                onChange={() => toggleArrayItem('allowed_provinces', prov.name)}
+                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <span className="text-sm">{prov.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {roleFormData.data_scope === 'cluster' && (
+                            <div className="space-y-2">
+                                <span className="text-sm font-medium text-gray-700">Allowed Clusters</span>
+                                <div className="max-h-40 overflow-y-auto border rounded-lg p-2 grid grid-cols-2 gap-2">
+                                    {clusters.map(cluster => (
+                                        <label key={cluster.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={(roleFormData.allowed_clusters || []).includes(cluster.name)}
+                                                onChange={() => toggleArrayItem('allowed_clusters', cluster.name)}
+                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <span className="text-sm">{cluster.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex justify-between border-t pt-4">
+                        {editingRole && (
+                            <Button type="button" variant="danger" onClick={() => deleteRole(editingRole.id)}>
+                                <Trash2 className="w-4 h-4 mr-2" /> Delete Role
+                            </Button>
+                        )}
+                        {!editingRole && <div></div>}
+                        <Button type="submit"><Save className="w-4 h-4 mr-2" /> Save Role</Button>
+                    </div>
+                </form>
             </Modal>
         </div>
     );

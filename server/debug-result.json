@@ -1,0 +1,72 @@
+{
+  "columnExists": true,
+  "columnType": "jsonb",
+  "totalRows": 2809,
+  "rowsWithPolygon": 283,
+  "sampleData": [
+    {
+      "id": 2810,
+      "site_id": "FSET03D01",
+      "locality": "FSET03D01 (PERUM PESONA SERPONG)",
+      "has_polygon": true
+    },
+    {
+      "id": 2809,
+      "site_id": "FPMG04D03",
+      "locality": "FPMG04D03 (URBAN TOWN SERPONG TOWER B & URBAN HOUSE)",
+      "has_polygon": true
+    },
+    {
+      "id": 2808,
+      "site_id": "FPMG04D02",
+      "locality": "FPMG04D02 (URBAN TOWN SERPONG TOWER B)",
+      "has_polygon": true
+    },
+    {
+      "id": 2807,
+      "site_id": "FPMG04D01",
+      "locality": "FPMG04D01 (URBAN TOWN SERPONG TOWER A)",
+      "has_polygon": true
+    },
+    {
+      "id": 2806,
+      "site_id": "FPGH02D01",
+      "locality": "FPGH02D01 (REMPOA A (C))",
+      "has_polygon": true
+    },
+    {
+      "id": 2805,
+      "site_id": "FLIC02D02",
+      "locality": "FLIC02D02 (TAMAN HARMONI)",
+      "has_polygon": true
+    },
+    {
+      "id": 2804,
+      "site_id": "FJP02900",
+      "locality": "FJP02900 (PONDOK PAKULONAN (2) (JL. BHAYANGKARA))",
+      "has_polygon": true
+    },
+    {
+      "id": 2803,
+      "site_id": "FJP02800",
+      "locality": "FJP02800 (PONDOK PAKULONAN)",
+      "has_polygon": true
+    },
+    {
+      "id": 2802,
+      "site_id": "FJP02700",
+      "locality": "FJP02700 (CLUSTER GRIYA HIJAU)",
+      "has_polygon": true
+    },
+    {
+      "id": 2801,
+      "site_id": "FJP01900",
+      "locality": "FJP01900 (BSD C (G))",
+      "has_polygon": true
+    }
+  ],
+  "hasPolygonExample": true,
+  "polygonDataType": "object",
+  "polygonDataPreview": "[[-6.32650145501611,106.694818441469],[-6.32696654092624,106.694764688573],[-6.32697077786656,106.69494156183],[-6.32736172317575,106.694931782351],[-6.32782942852982,106.695267682288],[-6.3281133902679,106.695252027522],[-6.32813474810999,106.695597181014],[-6.32855674005875,106.695604799648],[-6.3",
+  "polygonDataLength": 31
+}
