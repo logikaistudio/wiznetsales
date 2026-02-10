@@ -96,12 +96,14 @@ async function setupAllTables() {
             END $$;
         `);
 
-        // Insert default admin
+        // Insert default admin (password: 'password123' -> SHA256 hash)
+        const crypto = await import('crypto');
+        const defaultPasswordHash = crypto.default.createHash('sha256').update('password123').digest('hex');
         await db.query(`
             INSERT INTO users (username, email, password_hash, full_name, role, is_active) VALUES
-            ('admin', 'admin@netsales.com', 'admin123', 'Administrator', 'Admin', true)
+            ('admin', 'admin@netsales.com', $1, 'Administrator', 'Admin', true)
             ON CONFLICT (username) DO NOTHING
-        `);
+        `, [defaultPasswordHash]);
         console.log('✅ Users table ready\n');
 
         // ==========================================
