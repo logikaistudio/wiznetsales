@@ -1421,9 +1421,12 @@ app.post('/api/login', async (req, res) => {
         const { username, password } = req.body;
         const passwordHash = hashPassword(password);
 
-        // Check against users table
+        // Check against users table and get role permissions
         const result = await db.query(
-            'SELECT id, username, email, full_name, role FROM users WHERE (username = $1 OR email = $1) AND password_hash = $2 AND is_active = true',
+            `SELECT u.id, u.username, u.email, u.full_name, u.role, r.permissions as role_permissions 
+             FROM users u
+             LEFT JOIN roles r ON LOWER(u.role) = LOWER(r.name)
+             WHERE (u.username = $1 OR u.email = $1) AND u.password_hash = $2 AND u.is_active = true`,
             [username, passwordHash]
         );
 
@@ -1449,7 +1452,10 @@ app.post('/api/me', async (req, res) => {
         }
 
         const result = await db.query(
-            'SELECT id, username, email, full_name, role FROM users WHERE id = $1 AND is_active = true',
+            `SELECT u.id, u.username, u.email, u.full_name, u.role, r.permissions as role_permissions 
+             FROM users u
+             LEFT JOIN roles r ON LOWER(u.role) = LOWER(r.name)
+             WHERE u.id = $1 AND u.is_active = true`,
             [userId]
         );
 
