@@ -18,6 +18,7 @@ import {
     MapPin,
     Bell,
     Shield,
+    Settings,
     LogOut
 } from 'lucide-react';
 
@@ -52,8 +53,8 @@ const Sidebar = () => {
         { name: 'Omniflow', path: '/omniflow', icon: Headphones },
     ].filter(item => canAccessRoute(item.path));
 
-    // Master Data only for Admin/Leader/Manager
-    const showMasterData = user && (user.role === 'admin' || user.role === 'leader' || user.role === 'manager');
+    // Master Data only for Admin/Leader/Manager/SuperAdmin
+    const showMasterData = user && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'leader' || user.role === 'manager');
     const showUserManagement = user && (user.role === 'admin' || user.role === 'super_admin');
 
     const masterDataItems = [

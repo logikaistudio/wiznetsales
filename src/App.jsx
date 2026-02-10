@@ -45,7 +45,7 @@ const MasterDataRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return null;
 
-  if (!user || (user.role !== 'admin' && user.role !== 'leader' && user.role !== 'manager')) {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin' && user.role !== 'leader' && user.role !== 'manager')) {
     return <Navigate to="/" replace />;
   }
   return children;
