@@ -341,36 +341,13 @@ app.post('/api/coverage/bulk', async (req, res) => {
         console.log(`[Bulk Import] Starting ${mode} import of ${data.length} items`);
         console.log(`[Bulk Import] Sample item:`, JSON.stringify(data[0]).substring(0, 500));
 
-        // Ensure unique index exists (safe to run multiple times)
+        // Drop unique index on site_id if it exists (site_id is NOT unique - multiple points can share same site_id)
         try {
-            await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_sites_site_id_unique ON coverage_sites(site_id) WHERE site_id IS NOT NULL`);
-        } catch (idxErr) {
-            console.log('[Bulk Import] Note: Unique index already exists or could not be created:', idxErr.message);
-        }
+            await db.query(`DROP INDEX IF EXISTS idx_coverage_sites_site_id_unique`);
+        } catch (e) { /* ignore */ }
 
-        // insert mode: skip duplicates, upsert mode: update duplicates
-        const insertQuery = `
-      INSERT INTO coverage_sites (
-        network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      ON CONFLICT (site_id) DO NOTHING
-    `;
-        const upsertQuery = `
-      INSERT INTO coverage_sites (
-        network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      ON CONFLICT (site_id) DO UPDATE SET
-        network_type = EXCLUDED.network_type,
-        ampli_lat = EXCLUDED.ampli_lat,
-        ampli_long = EXCLUDED.ampli_long,
-        locality = EXCLUDED.locality,
-        status = EXCLUDED.status,
-        polygon_data = EXCLUDED.polygon_data,
-        homepass_id = EXCLUDED.homepass_id,
-        updated_at = NOW()
-    `;
-        const query = mode === 'upsert' ? upsertQuery : insertQuery;
         let processed = 0;
+        let updated = 0;
         let skipped = 0;
         let errors = [];
 
@@ -378,22 +355,42 @@ app.post('/api/coverage/bulk', async (req, res) => {
             try {
                 const polygonJson = item.polygonData ? JSON.stringify(item.polygonData) : null;
                 const siteId = item.siteId || `SITE-${Date.now()}-${processed + 1}`;
+                const lat = item.ampliLat || 0;
+                const lng = item.ampliLong || 0;
 
-                const result = await db.query(query, [
-                    item.networkType || 'HFC',
-                    siteId,
-                    item.ampliLat || 0,
-                    item.ampliLong || 0,
-                    item.locality || '',
-                    item.status || 'Active',
-                    polygonJson,
-                    item.homepassId || null
-                ]);
+                if (mode === 'upsert') {
+                    // Check if a record with same site_id AND similar coordinates exists
+                    const existing = await db.query(
+                        `SELECT id FROM coverage_sites WHERE site_id = $1 AND ampli_lat = $2 AND ampli_long = $3 LIMIT 1`,
+                        [siteId, lat, lng]
+                    );
 
-                if (result.rowCount > 0) {
-                    processed++;
+                    if (existing.rows.length > 0) {
+                        // Update existing record
+                        await db.query(
+                            `UPDATE coverage_sites SET 
+                                network_type = $1, locality = $2, status = $3, polygon_data = $4, homepass_id = $5, updated_at = NOW()
+                             WHERE id = $6`,
+                            [item.networkType || 'HFC', item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null, existing.rows[0].id]
+                        );
+                        updated++;
+                    } else {
+                        // Insert new record
+                        await db.query(
+                            `INSERT INTO coverage_sites (network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                            [item.networkType || 'HFC', siteId, lat, lng, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null]
+                        );
+                        processed++;
+                    }
                 } else {
-                    skipped++; // Duplicate site_id, skipped
+                    // Insert mode: always add as new data
+                    await db.query(
+                        `INSERT INTO coverage_sites (network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                        [item.networkType || 'HFC', siteId, lat, lng, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null]
+                    );
+                    processed++;
                 }
             } catch (itemErr) {
                 console.error(`[Bulk Import] Error on item ${processed}:`, itemErr.message);
@@ -404,13 +401,13 @@ app.post('/api/coverage/bulk', async (req, res) => {
             }
         }
 
-        console.log(`[Bulk Import] Completed. Mode: ${mode}, Processed: ${processed}, Skipped: ${skipped}, Errors: ${errors.length}`);
+        console.log(`[Bulk Import] Done. Mode: ${mode}, New: ${processed}, Updated: ${updated}, Errors: ${errors.length}`);
         res.json({
             message: mode === 'upsert'
-                ? `Upsert completed: ${processed} rows updated/added, ${skipped} skipped`
-                : `Import completed: ${processed} new rows added, ${skipped} duplicates skipped`,
+                ? `Upsert: ${processed} baru ditambahkan, ${updated} data diupdate`
+                : `Import: ${processed} data baru ditambahkan`,
             count: processed,
-            skipped,
+            updated,
             errors: errors.length > 0 ? errors : undefined
         });
     } catch (err) {
