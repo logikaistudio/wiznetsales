@@ -1446,6 +1446,29 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// Validate session - check if stored user is still valid/active
+app.post('/api/me', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        if (!userId) {
+            return res.status(401).json({ valid: false, error: 'No user ID provided' });
+        }
+
+        const result = await db.query(
+            'SELECT id, username, email, full_name, role FROM users WHERE id = $1 AND is_active = true',
+            [userId]
+        );
+
+        if (result.rows.length > 0) {
+            res.json({ valid: true, user: result.rows[0] });
+        } else {
+            res.status(401).json({ valid: false, error: 'User not found or inactive' });
+        }
+    } catch (err) {
+        res.status(500).json({ valid: false, error: err.message });
+    }
+});
+
 // ==========================================
 // USER MANAGEMENT
 // ==========================================

@@ -8,12 +8,44 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Check local storage on mount
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-        setLoading(false);
+        const validateSession = async () => {
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) {
+                try {
+                    const userData = JSON.parse(storedUser);
+                    // Validate session with server
+                    const res = await fetch('/api/me', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: userData.id })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.valid) {
+                            setUser(data.user);
+                            // Update localStorage with fresh data from server
+                            localStorage.setItem('user', JSON.stringify(data.user));
+                        } else {
+                            // User no longer valid
+                            localStorage.removeItem('user');
+                            setUser(null);
+                        }
+                    } else {
+                        // Server rejected - clear session
+                        localStorage.removeItem('user');
+                        setUser(null);
+                    }
+                } catch (error) {
+                    // Network error - keep stored user as fallback (offline support)
+                    console.warn('Session validation failed (offline?):', error.message);
+                    setUser(JSON.parse(storedUser));
+                }
+            }
+            setLoading(false);
+        };
+
+        validateSession();
     }, []);
 
     const login = async (username, password) => {
