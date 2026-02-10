@@ -113,6 +113,7 @@ const CoverageManagement = () => {
     const [excelColumns, setExcelColumns] = useState([]);
     const [columnMapping, setColumnMapping] = useState({});
     const [importPreview, setImportPreview] = useState([]);
+    const [importMode, setImportMode] = useState('insert'); // 'insert' = add new, 'upsert' = update existing + add new
     const fileInputRef = useRef(null);
     const kmzFileInputRef = useRef(null);
 
@@ -351,7 +352,7 @@ const CoverageManagement = () => {
                 const chunk = importPreview.slice(i, i + CHUNK);
                 await fetch('/api/coverage/bulk', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: chunk })
+                    body: JSON.stringify({ data: chunk, importMode })
                 });
                 setLoadingMessage(`Importing ${i + chunk.length} / ${importPreview.length}...`);
             }
@@ -362,11 +363,13 @@ const CoverageManagement = () => {
             // Switch to map view to show imported data
             setActiveView('map');
 
-            alert(`✅ Import completed! ${totalToImport} coverage points added successfully.`);
+            const modeLabel = importMode === 'upsert' ? 'updated/added' : 'added';
+            alert(`✅ Import completed! ${totalToImport} coverage points ${modeLabel} successfully.`);
         } catch (e) {
             alert("Import failed: " + e.message);
         } finally {
             setIsLoading(false);
+            setImportMode('insert'); // Reset mode
         }
     };
 
@@ -1085,6 +1088,55 @@ const CoverageManagement = () => {
 
             <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={`Preview Import (${importPreview.length} rows)`} className="max-w-4xl">
                 <div className="space-y-3">
+                    {/* Import Mode Selector */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3">📦 Pilih Mode Import:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label
+                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
+                                        ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="importMode"
+                                    value="insert"
+                                    checked={importMode === 'insert'}
+                                    onChange={() => setImportMode('insert')}
+                                    className="mt-1 text-blue-600"
+                                />
+                                <div>
+                                    <span className="font-semibold text-gray-900 text-sm">➕ Tambah Data Baru</span>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Semua data di file akan ditambahkan sebagai data baru. Data yang sudah ada di database tidak akan berubah.
+                                    </p>
+                                </div>
+                            </label>
+                            <label
+                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
+                                        ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="importMode"
+                                    value="upsert"
+                                    checked={importMode === 'upsert'}
+                                    onChange={() => setImportMode('upsert')}
+                                    className="mt-1 text-amber-600"
+                                />
+                                <div>
+                                    <span className="font-semibold text-gray-900 text-sm">🔄 Update & Tambah</span>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Data dengan <strong>Site ID</strong> yang sama akan diperbarui. Data baru akan ditambahkan.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
                     {/* Statistics Banner */}
                     {importPreview.some(r => r.polygonData) && (
                         <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -1145,7 +1197,9 @@ const CoverageManagement = () => {
                         </p>
                         <div className="flex gap-2">
                             <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
-                            <Button onClick={confirmImport}>Start Import</Button>
+                            <Button onClick={confirmImport}>
+                                {importMode === 'upsert' ? '🔄 Update & Import' : '➕ Start Import'}
+                            </Button>
                         </div>
                     </div>
                 </div>

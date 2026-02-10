@@ -144,6 +144,11 @@ async function setupAllTables() {
                 END IF;
             END $$;
         `);
+
+        // Add unique index on site_id for upsert support
+        await db.query(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_sites_site_id_unique ON coverage_sites(site_id);
+        `);
         console.log('✅ Coverage_sites table ready\n');
 
         // ==========================================

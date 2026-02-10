@@ -332,29 +332,47 @@ app.delete('/api/coverage/:id', async (req, res) => {
 
 app.post('/api/coverage/bulk', async (req, res) => {
     try {
-        const { data } = req.body;
+        const { data, importMode } = req.body;
         if (!data || !Array.isArray(data)) {
             throw new Error('Invalid data format');
         }
 
-        console.log(`[Bulk Import] Starting import of ${data.length} items`);
+        const mode = importMode || 'insert'; // 'insert' = add new only, 'upsert' = update existing + add new
+        console.log(`[Bulk Import] Starting ${mode} import of ${data.length} items`);
         console.log(`[Bulk Import] Sample item:`, JSON.stringify(data[0]).substring(0, 500));
 
-        const query = `
+        const insertQuery = `
       INSERT INTO coverage_sites (
         network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `;
-        let count = 0;
+        const upsertQuery = `
+      INSERT INTO coverage_sites (
+        network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (site_id) DO UPDATE SET
+        network_type = EXCLUDED.network_type,
+        ampli_lat = EXCLUDED.ampli_lat,
+        ampli_long = EXCLUDED.ampli_long,
+        locality = EXCLUDED.locality,
+        status = EXCLUDED.status,
+        polygon_data = EXCLUDED.polygon_data,
+        homepass_id = EXCLUDED.homepass_id,
+        updated_at = NOW()
+    `;
+        const query = mode === 'upsert' ? upsertQuery : insertQuery;
+        let inserted = 0;
+        let updated = 0;
         let errors = [];
 
         for (const item of data) {
             try {
                 const polygonJson = item.polygonData ? JSON.stringify(item.polygonData) : null;
+                const siteId = item.siteId || `SITE-${inserted + 1}`;
 
-                await db.query(query, [
+                const result = await db.query(query, [
                     item.networkType || 'HFC',
-                    item.siteId || `SITE-${count + 1}`,
+                    siteId,
                     item.ampliLat || 0,
                     item.ampliLong || 0,
                     item.locality || '',
@@ -362,18 +380,30 @@ app.post('/api/coverage/bulk', async (req, res) => {
                     polygonJson,
                     item.homepassId || null
                 ]);
-                count++;
+
+                if (mode === 'upsert' && result.command === 'INSERT') {
+                    // Check if it was an update (xmax != 0) or insert
+                    inserted++;
+                } else {
+                    inserted++;
+                }
             } catch (itemErr) {
-                console.error(`[Bulk Import] Error inserting item ${count}:`, itemErr.message);
-                errors.push({ index: count, error: itemErr.message, siteId: item.siteId });
+                console.error(`[Bulk Import] Error on item ${inserted}:`, itemErr.message);
+                errors.push({ index: inserted, error: itemErr.message, siteId: item.siteId });
                 if (errors.length > 5) {
                     throw new Error(`Too many errors. First error: ${errors[0].error}`);
                 }
             }
         }
 
-        console.log(`[Bulk Import] Completed. Inserted ${count} rows, ${errors.length} errors`);
-        res.json({ message: `Imported ${count} rows`, errors: errors.length > 0 ? errors : undefined });
+        console.log(`[Bulk Import] Completed. Mode: ${mode}, Processed: ${inserted} rows, ${errors.length} errors`);
+        res.json({
+            message: mode === 'upsert'
+                ? `Upsert completed: ${inserted} rows processed (existing data updated, new data added)`
+                : `Imported ${inserted} new rows`,
+            count: inserted,
+            errors: errors.length > 0 ? errors : undefined
+        });
     } catch (err) {
         console.error('[Bulk Import] Fatal error:', err.message);
         console.error('[Bulk Import] Stack:', err.stack);
@@ -804,27 +834,70 @@ app.post('/api/settings', async (req, res) => {
 
 app.post('/api/customers/bulk', async (req, res) => {
     try {
-        const { data } = req.body;
+        const { data, importMode } = req.body;
         if (!data || !Array.isArray(data)) throw new Error('Invalid data format');
 
-        // Note: For simplicity doing loop insert. ideally use pg-format or UNNEST
+        const mode = importMode || 'insert'; // 'insert' = add new only, 'upsert' = update existing + add new
+        console.log(`[Customer Bulk] Starting ${mode} import of ${data.length} items`);
+
         let count = 0;
+        let errors = [];
         for (const item of data) {
-            const customerId = item.customerId || `CUST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-            await db.query(`
-                INSERT INTO customers (
-                    customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
-                    latitude, longitude, phone, email, product_name, status, prospect_date, is_active
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-                ON CONFLICT (customer_id) DO NOTHING
-             `, [
-                customerId, item.type || 'Broadband Home', item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
-                item.latitude || 0, item.longitude || 0, item.phone, item.email, item.productName, item.status || 'Prospect',
-                item.prospectDate || new Date(), item.isActive !== false
-            ]);
-            count++;
+            try {
+                const customerId = item.customerId || `CUST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+                if (mode === 'upsert') {
+                    await db.query(`
+                        INSERT INTO customers (
+                            customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
+                            latitude, longitude, phone, email, product_name, status, prospect_date, is_active
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                        ON CONFLICT (customer_id) DO UPDATE SET
+                            type = EXCLUDED.type,
+                            name = EXCLUDED.name,
+                            address = EXCLUDED.address,
+                            area = EXCLUDED.area,
+                            kabupaten = EXCLUDED.kabupaten,
+                            kecamatan = EXCLUDED.kecamatan,
+                            kelurahan = EXCLUDED.kelurahan,
+                            latitude = EXCLUDED.latitude,
+                            longitude = EXCLUDED.longitude,
+                            phone = EXCLUDED.phone,
+                            email = EXCLUDED.email,
+                            product_name = EXCLUDED.product_name,
+                            status = EXCLUDED.status,
+                            prospect_date = EXCLUDED.prospect_date,
+                            is_active = EXCLUDED.is_active
+                    `, [
+                        customerId, item.type || 'Broadband Home', item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+                        item.latitude || 0, item.longitude || 0, item.phone, item.email, item.productName, item.status || 'Prospect',
+                        item.prospectDate || new Date(), item.isActive !== false
+                    ]);
+                } else {
+                    await db.query(`
+                        INSERT INTO customers (
+                            customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
+                            latitude, longitude, phone, email, product_name, status, prospect_date, is_active
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                        ON CONFLICT (customer_id) DO NOTHING
+                    `, [
+                        customerId, item.type || 'Broadband Home', item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+                        item.latitude || 0, item.longitude || 0, item.phone, item.email, item.productName, item.status || 'Prospect',
+                        item.prospectDate || new Date(), item.isActive !== false
+                    ]);
+                }
+                count++;
+            } catch (itemErr) {
+                errors.push({ index: count, error: itemErr.message });
+            }
         }
-        res.json({ message: `Imported ${count} customers` });
+        res.json({
+            message: mode === 'upsert'
+                ? `Upsert completed: ${count} rows processed (existing data updated, new data added)`
+                : `Imported ${count} new customers`,
+            count,
+            errors: errors.length > 0 ? errors : undefined
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });

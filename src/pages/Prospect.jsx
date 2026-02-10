@@ -30,6 +30,7 @@ const Prospect = () => {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [importPreview, setImportPreview] = useState([]);
     const [importLoading, setImportLoading] = useState(false);
+    const [importMode, setImportMode] = useState('insert'); // 'insert' = add new, 'upsert' = update existing + add new
 
     // Form State
     const [formData, setFormData] = useState({
@@ -339,15 +340,17 @@ const Prospect = () => {
             await fetch('/api/customers/bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: importPreview })
+                body: JSON.stringify({ data: importPreview, importMode })
             });
-            alert("Import successful!");
+            const modeLabel = importMode === 'upsert' ? 'updated/added' : 'imported';
+            alert(`Import successful! ${importPreview.length} records ${modeLabel}.`);
             setIsImportModalOpen(false);
             await fetchData();
         } catch (e) {
             alert("Import failed: " + e.message);
         } finally {
             setImportLoading(false);
+            setImportMode('insert'); // Reset mode
         }
     };
 
@@ -628,6 +631,55 @@ const Prospect = () => {
             {/* Import Preview Modal */}
             <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Prospects">
                 <div className="space-y-4">
+                    {/* Import Mode Selector */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3">📦 Pilih Mode Import:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label
+                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
+                                        ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="importModeProspect"
+                                    value="insert"
+                                    checked={importMode === 'insert'}
+                                    onChange={() => setImportMode('insert')}
+                                    className="mt-1 text-blue-600"
+                                />
+                                <div>
+                                    <span className="font-semibold text-gray-900 text-sm">➕ Tambah Data Baru</span>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Semua data di file akan ditambahkan sebagai record baru. Data lama tidak berubah.
+                                    </p>
+                                </div>
+                            </label>
+                            <label
+                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
+                                        ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="importModeProspect"
+                                    value="upsert"
+                                    checked={importMode === 'upsert'}
+                                    onChange={() => setImportMode('upsert')}
+                                    className="mt-1 text-amber-600"
+                                />
+                                <div>
+                                    <span className="font-semibold text-gray-900 text-sm">🔄 Update & Tambah</span>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Data dengan <strong>Customer ID</strong> yang sama akan diperbarui. Data baru akan ditambahkan.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
                     <p className="text-sm text-gray-600">Ready to import {importPreview.length} records. Please review the first few rows.</p>
                     <div className="max-h-[300px] overflow-auto border rounded text-xs">
                         <table className="w-full text-left">
@@ -648,7 +700,7 @@ const Prospect = () => {
                     <div className="flex justify-end gap-2">
                         <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
                         <Button onClick={confirmImport} disabled={importLoading}>
-                            {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Import'}
+                            {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (importMode === 'upsert' ? '🔄 Update & Import' : '➕ Confirm Import')}
                         </Button>
                     </div>
                 </div>
