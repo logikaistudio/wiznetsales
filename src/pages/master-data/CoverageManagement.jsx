@@ -346,15 +346,28 @@ const CoverageManagement = () => {
         const totalToImport = importPreview.length;
         // Bulk implementation
         try {
-            // Chunk it
-            const CHUNK = 1000;
+            // Small chunks to avoid Vercel serverless timeout (10s limit)
+            const CHUNK = 30;
+            let totalProcessed = 0;
+            let totalErrors = [];
+
             for (let i = 0; i < importPreview.length; i += CHUNK) {
                 const chunk = importPreview.slice(i, i + CHUNK);
-                await fetch('/api/coverage/bulk', {
+                setLoadingMessage(`Importing ${i + 1} - ${Math.min(i + CHUNK, importPreview.length)} of ${importPreview.length}...`);
+
+                const response = await fetch('/api/coverage/bulk', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ data: chunk, importMode })
                 });
-                setLoadingMessage(`Importing ${i + chunk.length} / ${importPreview.length}...`);
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+                    console.error(`Chunk ${i}/${importPreview.length} failed:`, errData);
+                    totalErrors.push(`Chunk ${i}: ${errData.error || 'Unknown error'}`);
+                } else {
+                    const result = await response.json();
+                    totalProcessed += result.count || chunk.length;
+                }
             }
 
             // Refresh data
@@ -364,7 +377,11 @@ const CoverageManagement = () => {
             setActiveView('map');
 
             const modeLabel = importMode === 'upsert' ? 'updated/added' : 'added';
-            alert(`✅ Import completed! ${totalToImport} coverage points ${modeLabel} successfully.`);
+            if (totalErrors.length > 0) {
+                alert(`⚠️ Import partially completed: ${totalProcessed} ${modeLabel}, ${totalErrors.length} chunk(s) failed.`);
+            } else {
+                alert(`✅ Import completed! ${totalProcessed} coverage points ${modeLabel} successfully.`);
+            }
         } catch (e) {
             alert("Import failed: " + e.message);
         } finally {
@@ -1094,8 +1111,8 @@ const CoverageManagement = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <label
                                 className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
-                                        ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
                                     }`}
                             >
                                 <input
@@ -1115,8 +1132,8 @@ const CoverageManagement = () => {
                             </label>
                             <label
                                 className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
-                                        ? 'border-amber-500 bg-amber-50 shadow-sm'
-                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
                                     }`}
                             >
                                 <input

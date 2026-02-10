@@ -339,12 +339,6 @@ app.post('/api/coverage/bulk', async (req, res) => {
 
         const mode = importMode || 'insert'; // 'insert' = add new only, 'upsert' = update existing + add new
         console.log(`[Bulk Import] Starting ${mode} import of ${data.length} items`);
-        console.log(`[Bulk Import] Sample item:`, JSON.stringify(data[0]).substring(0, 500));
-
-        // Drop unique index on site_id if it exists (site_id is NOT unique - multiple points can share same site_id)
-        try {
-            await db.query(`DROP INDEX IF EXISTS idx_coverage_sites_site_id_unique`);
-        } catch (e) { /* ignore */ }
 
         let processed = 0;
         let updated = 0;
