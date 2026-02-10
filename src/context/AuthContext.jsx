@@ -1,16 +1,85 @@
-
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 
 const AuthContext = createContext(null);
+
+const SESSION_TIMEOUT_MS = 180 * 60 * 1000; // 180 minutes in milliseconds
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const timeoutRef = useRef(null);
 
+    const logout = useCallback(() => {
+        setUser(null);
+        localStorage.removeItem('user');
+        localStorage.removeItem('lastActive');
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+    }, []);
+
+    // Reset inactivity timer
+    const resetInactivityTimer = useCallback(() => {
+        // Store last active timestamp
+        localStorage.setItem('lastActive', Date.now().toString());
+
+        // Clear existing timer
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+
+        // Set new timer
+        timeoutRef.current = setTimeout(() => {
+            alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 180 menit. Silakan login kembali.');
+            logout();
+        }, SESSION_TIMEOUT_MS);
+    }, [logout]);
+
+    // Track user activity
+    useEffect(() => {
+        if (!user) return;
+
+        const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+
+        const handleActivity = () => {
+            resetInactivityTimer();
+        };
+
+        // Attach event listeners
+        events.forEach(event => {
+            window.addEventListener(event, handleActivity, { passive: true });
+        });
+
+        // Start initial timer
+        resetInactivityTimer();
+
+        return () => {
+            // Cleanup
+            events.forEach(event => {
+                window.removeEventListener(event, handleActivity);
+            });
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, [user, resetInactivityTimer]);
+
+    // Validate session on mount
     useEffect(() => {
         const validateSession = async () => {
             const storedUser = localStorage.getItem('user');
             if (storedUser) {
+                // Check if session has expired based on last activity
+                const lastActive = parseInt(localStorage.getItem('lastActive') || '0');
+                if (lastActive > 0 && Date.now() - lastActive > SESSION_TIMEOUT_MS) {
+                    // Session expired
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('lastActive');
+                    setUser(null);
+                    setLoading(false);
+                    return;
+                }
+
                 try {
                     const userData = JSON.parse(storedUser);
                     // Validate session with server
@@ -24,16 +93,15 @@ export const AuthProvider = ({ children }) => {
                         const data = await res.json();
                         if (data.valid) {
                             setUser(data.user);
-                            // Update localStorage with fresh data from server
                             localStorage.setItem('user', JSON.stringify(data.user));
                         } else {
-                            // User no longer valid
                             localStorage.removeItem('user');
+                            localStorage.removeItem('lastActive');
                             setUser(null);
                         }
                     } else {
-                        // Server rejected - clear session
                         localStorage.removeItem('user');
+                        localStorage.removeItem('lastActive');
                         setUser(null);
                     }
                 } catch (error) {
@@ -59,6 +127,7 @@ export const AuthProvider = ({ children }) => {
             if (data.success) {
                 setUser(data.user);
                 localStorage.setItem('user', JSON.stringify(data.user));
+                localStorage.setItem('lastActive', Date.now().toString());
                 return { success: true };
             } else {
                 return { success: false, error: data.error };
@@ -68,16 +137,10 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
-        setUser(null);
-        localStorage.removeItem('user');
-    };
-
     const hasPermission = (permission) => {
         if (!user) return false;
         if (user.role === 'admin' || user.role === 'leader') return true;
 
-        // Define simple permissions map based on roles
         const permissions = {
             'sales': ['view_dashboard', 'view_coverage', 'view_achievement', 'manage_prospects'],
             'user': ['view_dashboard']
@@ -87,14 +150,12 @@ export const AuthProvider = ({ children }) => {
         return userPerms.includes(permission);
     };
 
-    // Specific check for access logic
     const canAccessRoute = (path) => {
         if (!user) return false;
         if (user.role === 'admin' || user.role === 'leader') return true;
 
         if (user.role === 'sales') {
             const allowed = ['/', '/achievement', '/coverage', '/prospect'];
-            // Allow exact match or sub-paths if logic dictates, here we use precise paths mostly
             return allowed.includes(path);
         }
 
