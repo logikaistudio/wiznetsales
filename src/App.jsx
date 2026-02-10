@@ -13,6 +13,7 @@ import ProductManagement from './pages/master-data/ProductManagement';
 import Promo from './pages/master-data/Promo';
 import HotNews from './pages/master-data/HotNews';
 import UserManagement from './pages/master-data/UserManagement';
+import ApplicationSettings from './pages/master-data/ApplicationSettings';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
@@ -81,6 +82,7 @@ function App() {
 
             {/* User Management - Top Level Menu for Admin Only */}
             <Route path="user-management" element={<AdminRoute><UserManagement /></AdminRoute>} />
+            <Route path="application-settings" element={<AdminRoute><ApplicationSettings /></AdminRoute>} />
 
             <Route path="master-data">
               <Route index element={<Navigate to="person-incharge" replace />} />

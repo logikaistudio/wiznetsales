@@ -101,18 +101,33 @@ const Sidebar = () => {
 
                 {/* User Management - Separate Menu for Admin Only */}
                 {showUserManagement && (
-                    <NavLink
-                        to="/user-management"
-                        className={({ isActive }) => cn(
-                            "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
-                            isActive
-                                ? "bg-white/20 font-semibold shadow-md"
-                                : "hover:bg-white/10 hover:translate-x-1"
-                        )}
-                    >
-                        <Shield className="w-5 h-5" />
-                        <span>User Management</span>
-                    </NavLink>
+                    <>
+                        <NavLink
+                            to="/user-management"
+                            className={({ isActive }) => cn(
+                                "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
+                                isActive
+                                    ? "bg-white/20 font-semibold shadow-md"
+                                    : "hover:bg-white/10 hover:translate-x-1"
+                            )}
+                        >
+                            <Shield className="w-5 h-5" />
+                            <span>User Management</span>
+                        </NavLink>
+
+                        <NavLink
+                            to="/application-settings"
+                            className={({ isActive }) => cn(
+                                "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
+                                isActive
+                                    ? "bg-white/20 font-semibold shadow-md"
+                                    : "hover:bg-white/10 hover:translate-x-1"
+                            )}
+                        >
+                            <Settings className="w-5 h-5" />
+                            <span>App Settings</span>
+                        </NavLink>
+                    </>
                 )}
 
                 {/* Master Data Group */}

@@ -1544,25 +1544,83 @@ app.get('/api/roles', async (req, res) => {
     }
 });
 
+// Create new role
+app.post('/api/roles', async (req, res) => {
+    try {
+        const { name, description, permissions, data_scope, allowed_clusters, allowed_provinces } = req.body;
+
+        await db.query(
+            `INSERT INTO roles (
+                name, description, permissions, data_scope, allowed_clusters, allowed_provinces, is_active, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())`,
+            [
+                name,
+                description || '',
+                JSON.stringify(permissions || {}),
+                data_scope || 'all',
+                JSON.stringify(allowed_clusters || []),
+                JSON.stringify(allowed_provinces || [])
+            ]
+        );
+
+        res.json({ message: 'Role created' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update role
 app.put('/api/roles/:id', async (req, res) => {
     try {
-        const { isActive, permissions } = req.body;
+        const { name, description, permissions, data_scope, allowed_clusters, allowed_provinces, isActive } = req.body;
 
-        if (permissions !== undefined) {
-            // Update permissions
-            await db.query(
-                'UPDATE roles SET permissions = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-                [JSON.stringify(permissions), req.params.id]
-            );
-        } else if (isActive !== undefined) {
-            // Update active status only
-            await db.query(
-                'UPDATE roles SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-                [isActive, req.params.id]
-            );
+        if (isActive !== undefined && Object.keys(req.body).length === 1) {
+            // Quick status update only
+            await db.query('UPDATE roles SET is_active = $1, updated_at = NOW() WHERE id = $2', [isActive, req.params.id]);
+            return res.json({ message: 'Role status updated' });
         }
 
+        await db.query(
+            `UPDATE roles SET 
+                name = $1, 
+                description = $2, 
+                permissions = $3, 
+                data_scope = $4,
+                allowed_clusters = $5,
+                allowed_provinces = $6,
+                updated_at = NOW() 
+             WHERE id = $7`,
+            [
+                name,
+                description || '',
+                JSON.stringify(permissions || {}),
+                data_scope || 'all',
+                JSON.stringify(allowed_clusters || []),
+                JSON.stringify(allowed_provinces || []),
+                req.params.id
+            ]
+        );
+
         res.json({ message: 'Role updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete role
+app.delete('/api/roles/:id', async (req, res) => {
+    try {
+        // Prevent deleting core roles to avoid lockout (optional safely guard)
+        const roleCheck = await db.query('SELECT name FROM roles WHERE id = $1', [req.params.id]);
+        if (roleCheck.rows.length > 0) {
+            const rName = roleCheck.rows[0].name.toLowerCase();
+            if (rName === 'admin' || rName === 'super_admin') {
+                return res.status(403).json({ error: 'Cannot delete core system roles' });
+            }
+        }
+
+        await db.query('DELETE FROM roles WHERE id = $1', [req.params.id]);
+        res.json({ message: 'Role deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
