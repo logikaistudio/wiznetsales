@@ -54,6 +54,7 @@ const Sidebar = () => {
 
     // Master Data only for Admin/Leader/Manager
     const showMasterData = user && (user.role === 'admin' || user.role === 'leader' || user.role === 'manager');
+    const showUserManagement = user && (user.role === 'admin' || user.role === 'super_admin');
 
     const masterDataItems = [
         { name: 'Person Incharge', path: '/master-data/person-incharge', icon: User },
@@ -62,13 +63,7 @@ const Sidebar = () => {
         { name: 'Product Management', path: '/master-data/product-management', icon: Box },
         { name: 'Promo', path: '/master-data/promo', icon: Tag },
         { name: 'Hot News', path: '/master-data/hotnews', icon: Bell },
-        { name: 'User Management', path: '/master-data/user-management', icon: Shield },
-    ].filter(item => {
-        if (item.path === '/master-data/user-management') {
-            return user && user.role === 'admin';
-        }
-        return true;
-    });
+    ];
 
     const handleLogout = () => {
         logout();
@@ -103,6 +98,22 @@ const Sidebar = () => {
                         <span>{item.name}</span>
                     </NavLink>
                 ))}
+
+                {/* User Management - Separate Menu for Admin Only */}
+                {showUserManagement && (
+                    <NavLink
+                        to="/user-management"
+                        className={({ isActive }) => cn(
+                            "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
+                            isActive
+                                ? "bg-white/20 font-semibold shadow-md"
+                                : "hover:bg-white/10 hover:translate-x-1"
+                        )}
+                    >
+                        <Shield className="w-5 h-5" />
+                        <span>User Management</span>
+                    </NavLink>
+                )}
 
                 {/* Master Data Group */}
                 {showMasterData && (

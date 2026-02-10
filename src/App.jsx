@@ -55,7 +55,7 @@ const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return null;
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -79,6 +79,9 @@ function App() {
               <MasterDataRoute><Omniflow /></MasterDataRoute>
             } />
 
+            {/* User Management - Top Level Menu for Admin Only */}
+            <Route path="user-management" element={<AdminRoute><UserManagement /></AdminRoute>} />
+
             <Route path="master-data">
               <Route index element={<Navigate to="person-incharge" replace />} />
               <Route path="person-incharge" element={<MasterDataRoute><PersonIncharge /></MasterDataRoute>} />
@@ -87,7 +90,6 @@ function App() {
               <Route path="product-management" element={<MasterDataRoute><ProductManagement /></MasterDataRoute>} />
               <Route path="promo" element={<MasterDataRoute><Promo /></MasterDataRoute>} />
               <Route path="hotnews" element={<MasterDataRoute><HotNews /></MasterDataRoute>} />
-              <Route path="user-management" element={<AdminRoute><UserManagement /></AdminRoute>} />
             </Route>
           </Route>
         </Routes>
