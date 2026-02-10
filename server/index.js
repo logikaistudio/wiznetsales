@@ -1493,6 +1493,18 @@ app.post('/api/users', async (req, res) => {
         const result = await db.query(query, [username, email, passwordHash, fullName, role || 'user']);
         res.json({ message: 'User created', user: result.rows[0] });
     } catch (err) {
+        console.error('Error creating user:', err);
+
+        // Handle unique constraint violations (duplicate username or email)
+        if (err.code === '23505') {
+            if (err.constraint === 'users_username_key') {
+                return res.status(400).json({ error: 'Username already exists' });
+            } else if (err.constraint === 'users_email_key') {
+                return res.status(400).json({ error: 'Email already exists' });
+            }
+            return res.status(400).json({ error: 'User with this username or email already exists' });
+        }
+
         res.status(500).json({ error: err.message });
     }
 });
