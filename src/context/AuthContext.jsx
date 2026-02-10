@@ -139,7 +139,7 @@ export const AuthProvider = ({ children }) => {
 
     const hasPermission = (permission) => {
         if (!user) return false;
-        if (user.role === 'admin' || user.role === 'leader') return true;
+        if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'leader') return true;
 
         const permissions = {
             'sales': ['view_dashboard', 'view_coverage', 'view_achievement', 'manage_prospects'],
@@ -152,7 +152,7 @@ export const AuthProvider = ({ children }) => {
 
     const canAccessRoute = (path) => {
         if (!user) return false;
-        if (user.role === 'admin' || user.role === 'leader') return true;
+        if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'leader') return true;
 
         if (user.role === 'sales') {
             const allowed = ['/', '/achievement', '/coverage', '/prospect'];
