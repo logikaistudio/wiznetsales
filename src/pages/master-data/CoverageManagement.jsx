@@ -118,14 +118,28 @@ const CoverageManagement = () => {
     const kmzFileInputRef = useRef(null);
 
     // FETCH DATA
-    const fetchData = useCallback(async (page = 1, search = '') => {
+    const fetchData = useCallback(async (page = 1, search = '', view = 'table') => {
         setIsLoading(true);
         setLoadingMessage('Loading data...');
         try {
-            const res = await fetch(`/api/coverage?page=${page}&limit=50&search=${search}`);
+            // If view is map, we fetch ALL data (all=true) so everything shows up.
+            // If view is table, we fetch paginated (limit=50).
+            const isMap = view === 'map';
+            const queryParams = new URLSearchParams({
+                page: page.toString(),
+                limit: '50',
+                search,
+                all: isMap ? 'true' : 'false'
+            });
+
+            const res = await fetch(`/api/coverage?${queryParams.toString()}`);
             const json = await res.json();
+
             if (json.data) {
                 setCoverageData(json.data);
+
+                // Only update pagination state if we are in table mode (or if server returns it anyway)
+                // When in map mode (all=true), totalPages is 1.
                 setTotalPages(json.pagination.totalPages);
                 setTotalRows(json.pagination.totalRows);
                 setCurrentPage(json.pagination.page);
@@ -156,18 +170,20 @@ const CoverageManagement = () => {
     }, []);
 
     useEffect(() => {
-        fetchData(1, '');
+        // Fetch data whenever view mode changes or on initial load
+        // If map -> fetch all. If table -> fetch page 1 (or current).
+        fetchData(currentPage, searchTerm, activeView);
         fetchSettings();
-    }, [fetchData, fetchSettings]);
+    }, [fetchData, fetchSettings, activeView]); // Add activeView dependency
 
     // Debounce Search
     useEffect(() => {
-        const timer = setTimeout(() => fetchData(1, searchTerm), 500);
+        const timer = setTimeout(() => fetchData(1, searchTerm, activeView), 500);
         return () => clearTimeout(timer);
-    }, [searchTerm, fetchData]);
+    }, [searchTerm, fetchData, activeView]);
 
     // Handlers
-    const handlePageChange = (newPage) => fetchData(newPage, searchTerm);
+    const handlePageChange = (newPage) => fetchData(newPage, searchTerm, activeView);
 
     const handleOpenModal = (item = null) => {
         setEditingItem(item);

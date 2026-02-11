@@ -385,6 +385,7 @@ app.get('/api/coverage', async (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
     const offset = (page - 1) * limit;
     const search = req.query.search || '';
+    const showAll = req.query.all === 'true';
 
     try {
         let queryText = 'SELECT * FROM coverage_sites';
@@ -396,20 +397,35 @@ app.get('/api/coverage', async (req, res) => {
         site_id ILIKE $1 OR 
         locality ILIKE $1 OR 
         network_type ILIKE $1`;
-            queryText += searchClause;
-            countQueryText += searchClause;
+            // Note: If using $1 for search, we need to push it
             queryParams.push(`%${search}%`);
+
+            // Adjust query text to use the correct parameter index
+            queryText += ` WHERE site_id ILIKE $${queryParams.length} OR locality ILIKE $${queryParams.length} OR network_type ILIKE $${queryParams.length}`;
+            countQueryText += ` WHERE site_id ILIKE $${queryParams.length} OR locality ILIKE $${queryParams.length} OR network_type ILIKE $${queryParams.length}`;
         }
 
-        queryText += ` ORDER BY id DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
+        let totalRows = 0;
+        let rows = [];
 
-        const countResult = await db.query(countQueryText, queryParams);
-        const totalRows = parseInt(countResult.rows[0].count);
+        if (showAll) {
+            // No pagination, return all matching records (with a safety limit)
+            queryText += ` ORDER BY id DESC LIMIT 20000`; // Safety cap
+            const dataResponse = await db.query(queryText, queryParams);
+            rows = dataResponse.rows;
+            totalRows = rows.length;
+        } else {
+            // Pagination
+            const countResult = await db.query(countQueryText, queryParams);
+            totalRows = parseInt(countResult.rows[0].count);
 
-        const dataResponse = await db.query(queryText, [...queryParams, limit, offset]);
+            queryText += ` ORDER BY id DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
+            const dataResponse = await db.query(queryText, [...queryParams, limit, offset]);
+            rows = dataResponse.rows;
+        }
 
         res.json({
-            data: dataResponse.rows.map(row => ({
+            data: rows.map(row => ({
                 id: row.id,
                 networkType: row.network_type,
                 siteId: row.site_id,
@@ -419,16 +435,16 @@ app.get('/api/coverage', async (req, res) => {
                 status: row.status,
                 homepassId: row.homepass_id || null,
                 createdAt: row.created_at,
-                // JSONB returns object directly, but handle string case too
-                polygonData: row.polygon_data
-                    ? (typeof row.polygon_data === 'string' ? JSON.parse(row.polygon_data) : row.polygon_data)
-                    : null
+                // Handle polygon_data carefully - pg driver might return object or string depending on column type/driver version
+                polygonData: typeof row.polygon_data === 'string'
+                    ? JSON.parse(row.polygon_data)
+                    : row.polygon_data
             })),
             pagination: {
                 page,
-                limit,
+                limit: showAll ? totalRows : limit,
                 totalRows,
-                totalPages: Math.ceil(totalRows / limit)
+                totalPages: showAll ? 1 : Math.ceil(totalRows / limit)
             }
         });
     } catch (err) {
