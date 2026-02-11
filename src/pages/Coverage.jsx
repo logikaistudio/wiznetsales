@@ -15,12 +15,22 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 delete Icon.Default.prototype._getIconUrl;
 Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow });
 
-// Icons
-const anchorIcon = divIcon({
-    className: 'custom-anchor',
-    html: `<div style="background-color:#0ea5e9;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [12, 12], iconAnchor: [6, 6]
-});
+
+// Dynamic Node Icon based on network type and settings
+const createNodeIcon = (networkType, settings) => {
+    const type = networkType ? String(networkType).trim().toUpperCase() : '';
+    const isFTTH = type === 'FTTH';
+
+    const nodeColor = isFTTH ? (settings.ftthNodeColor || '#2563eb') : (settings.hfcNodeColor || '#ea580c');
+    const borderRadius = isFTTH ? '0px' : '50%'; // Square for FTTH, circle for HFC
+
+    return divIcon({
+        className: 'custom-node-marker',
+        html: `<div style="background-color:${nodeColor};width:6px;height:6px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
+        iconSize: [6, 6],
+        iconAnchor: [3, 3]
+    });
+};
 
 const customerIcon = (status) => divIcon({
     className: 'customer-marker',
@@ -45,7 +55,6 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 const CONSTANTS = {
-    COVERAGE_RADIUS_METERS: 250, // Updated to 250m
     DEFAULT_CENTER: [-6.2088, 106.8456] // Jakarta
 };
 
@@ -77,6 +86,18 @@ const Coverage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState({ covered: 0, uncovered: 0, total: 0 });
 
+    // Settings state - same as Coverage Management
+    const [settings, setSettings] = useState({
+        coverageRadius: 50,
+        coverageColor: '#22c55e',
+        ftthNodeColor: '#2563eb',
+        hfcNodeColor: '#ea580c',
+        ftthRadiusColor: '#22c55e',
+        hfcRadiusColor: '#eab308',
+        ftthRadius: 50,
+        hfcRadius: 50
+    });
+
     // Manual Check State
     const [isPickingLocation, setIsPickingLocation] = useState(false);
     const [manualCheckPoint, setManualCheckPoint] = useState(null);
@@ -84,6 +105,29 @@ const Coverage = () => {
     // Manual Input State
     const [manualInput, setManualInput] = useState({ lat: '', lng: '' });
     const [showInputForm, setShowInputForm] = useState(false);
+
+    // Fetch Settings
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                setSettings({
+                    coverageRadius: parseInt(data.coverageRadius) || 50,
+                    coverageColor: data.coverageColor || '#22c55e',
+                    ftthNodeColor: data.ftthNodeColor || '#2563eb',
+                    hfcNodeColor: data.hfcNodeColor || '#ea580c',
+                    ftthRadiusColor: data.ftthRadiusColor || '#22c55e',
+                    hfcRadiusColor: data.hfcRadiusColor || '#eab308',
+                    ftthRadius: parseInt(data.ftthRadius) || 50,
+                    hfcRadius: parseInt(data.hfcRadius) || 50
+                });
+            } catch (err) {
+                console.error('Failed to load settings', err);
+            }
+        };
+        fetchSettings();
+    }, []);
 
     // Fetch Data
     useEffect(() => {
@@ -134,7 +178,12 @@ const Coverage = () => {
                 }
             }
 
-            const isCovered = minDist <= CONSTANTS.COVERAGE_RADIUS_METERS;
+            // Use network-type-specific radius
+            const coverageRadius = nearestPoint?.networkType === 'FTTH'
+                ? (settings.ftthRadius || 50)
+                : (settings.hfcRadius || 50);
+
+            const isCovered = minDist <= coverageRadius;
             if (isCovered) coveredCount++;
 
             return {
@@ -155,7 +204,7 @@ const Coverage = () => {
             uncovered: analyzed.length - coveredCount
         });
 
-    }, [coveragePoints, customers]);
+    }, [coveragePoints, customers, settings]);
 
     const handleMapClick = (latlng) => {
         const lat = latlng.lat;
@@ -173,7 +222,12 @@ const Coverage = () => {
             }
         }
 
-        const isCovered = minDist <= CONSTANTS.COVERAGE_RADIUS_METERS;
+        // Use network-type-specific radius
+        const coverageRadius = nearestPoint?.networkType === 'FTTH'
+            ? (settings.ftthRadius || 50)
+            : (settings.hfcRadius || 50);
+
+        const isCovered = minDist <= coverageRadius;
 
         setManualCheckPoint({
             lat,
@@ -215,7 +269,7 @@ const Coverage = () => {
                     <MapIcon className="w-5 h-5 text-primary" /> Coverage Check
                 </h1>
                 <p className="text-xs text-gray-500 mb-3">
-                    Visualizing customer locations ({CONSTANTS.COVERAGE_RADIUS_METERS}m radius).
+                    Visualizing customer locations (FTTH: {settings.ftthRadius}m, HFC: {settings.hfcRadius}m radius).
                 </p>
 
                 {/* Manual Check Tools */}
@@ -407,18 +461,35 @@ const Coverage = () => {
                         }
 
                         // Default: render as Circle with marker
+                        const isFTTH = point.networkType === 'FTTH';
+                        const radiusColor = isFTTH ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308');
+                        const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
+
                         return (
-                            <Circle
-                                key={`cov-${point.id || idx}`}
-                                center={[point.ampliLat, point.ampliLong]}
-                                pathOptions={{ fillColor: '#0ea5e9', color: '#0ea5e9', weight: 1, opacity: 0.3, fillOpacity: 0.1 }}
-                                radius={CONSTANTS.COVERAGE_RADIUS_METERS}
-                            >
-                                <Marker position={[point.ampliLat, point.ampliLong]} icon={anchorIcon}>
+                            <>
+                                <Circle
+                                    key={`cov-circle-${point.id || idx}`}
+                                    center={[point.ampliLat, point.ampliLong]}
+                                    pathOptions={{
+                                        fillColor: radiusColor,
+                                        color: radiusColor,
+                                        weight: 1,
+                                        opacity: 0.3,
+                                        fillOpacity: 0.1
+                                    }}
+                                    radius={radius}
+                                />
+                                <Marker
+                                    key={`cov-marker-${point.id || idx}`}
+                                    position={[point.ampliLat, point.ampliLong]}
+                                    icon={createNodeIcon(point.networkType, settings)}
+                                >
                                     <Popup>
                                         <div className="text-xs font-sans space-y-1 min-w-[150px]">
                                             <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
+                                                <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", isFTTH ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
+                                                    {point.networkType}
+                                                </span>
                                                 <span className="text-sky-600 font-semibold text-[10px]">Node</span>
                                             </div>
                                             <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
@@ -427,7 +498,7 @@ const Coverage = () => {
                                         </div>
                                     </Popup>
                                 </Marker>
-                            </Circle>
+                            </>
                         );
                     })}
 
@@ -475,20 +546,32 @@ const Coverage = () => {
 
             {/* Legend */}
             <div className="absolute bottom-6 right-6 z-[400] bg-white p-3 rounded-lg shadow-md border border-gray-200 text-xs">
+                <h4 className="font-bold mb-2 text-gray-700 border-b pb-1">Map Legend</h4>
+
+                {/* Customer Status */}
                 <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
-                    <span>Covered</span>
+                    <span>Covered Customer</span>
                 </div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-2">
                     <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
-                    <span>Uncovered</span>
+                    <span>Uncovered Customer</span>
                 </div>
-                <div className="flex items-center gap-2 mb-1">
-                    <div className="w-3 h-3 rounded-full bg-sky-500 border-2 border-white shadow-sm"></div>
-                    <span>Node (250m)</span>
+
+                {/* Network Nodes */}
+                <div className="border-t pt-2 mt-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 border border-white shadow-sm" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '0px' }}></div>
+                        <span>FTTH Node ({settings.ftthRadius}m)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 border border-white shadow-sm" style={{ backgroundColor: settings.hfcNodeColor || '#ea580c', borderRadius: '50%' }}></div>
+                        <span>HFC Node ({settings.hfcRadius}m)</span>
+                    </div>
                 </div>
+
                 {coveragePoints.some(p => p.polygonData && Array.isArray(p.polygonData) && p.polygonData.length > 0) && (
-                    <div className="flex items-center gap-2 border-t pt-1 mt-1">
+                    <div className="flex items-center gap-2 border-t pt-2 mt-2">
                         <div className="w-3 h-3 border-2 border-red-500 bg-red-500/20" style={{ borderRadius: '2px' }}></div>
                         <span>Coverage Area</span>
                     </div>
