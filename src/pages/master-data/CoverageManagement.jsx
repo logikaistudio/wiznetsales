@@ -86,18 +86,7 @@ const CoverageManagement = () => {
         }
     };
 
-    // Settings State
-    const [settings, setSettings] = useState({
-        coverageRadius: 250,
-        coverageColor: '#0ea5e9',
-        uncoveredColor: '#ef4444'
-    });
 
-    // Coverage Color Zones State
-    const [colorZones, setColorZones] = useState([
-        { id: 1, label: 'Primary Coverage', color: '#0ea5e9', radius: 250 },
-        { id: 2, label: 'Secondary Coverage', color: '#10b981', radius: 500 }
-    ]);
 
     // Info Panel State
     const [showInfoPanel, setShowInfoPanel] = useState(true);
@@ -151,13 +140,58 @@ const CoverageManagement = () => {
         }
     }, []);
 
+    const handleSaveSettings = async (e) => {
+        e.preventDefault();
+        try {
+            await fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+            setIsSettingsOpen(false);
+        } catch (error) {
+            console.error('Error saving settings:', error);
+            alert('Failed to save settings');
+        }
+    };
+
+    // Start with more comprehensive defaults
+    const [settings, setSettings] = useState({
+        coverageRadius: 50,
+        coverageColor: '#22c55e',
+        ftthNodeColor: '#2563eb',
+        hfcNodeColor: '#ea580c', // Orange default for distinction, or keep blue
+        ftthRadiusColor: '#22c55e',
+        hfcRadiusColor: '#eab308', // Yellow default
+        ftthRadius: 50,
+        hfcRadius: 50
+    });
+
+    const [colorZones, setColorZones] = useState([
+        { id: 1, label: 'Standard', color: '#22c55e', radius: 50 }
+    ]);
+
+    // ... (other states)
+
     const fetchSettings = useCallback(async () => {
         try {
             const res = await fetch('/api/settings');
             const data = await res.json();
-            if (data.coverageRadius) setSettings(prev => ({ ...prev, ...data }));
 
-            // Load color zones from settings
+            // Merge loaded settings with defaults
+            setSettings(prev => ({
+                ...prev,
+                ...data,
+                // Ensure specific network settings exist if not in DB yet
+                ftthNodeColor: data.ftthNodeColor || prev.ftthNodeColor,
+                hfcNodeColor: data.hfcNodeColor || prev.hfcNodeColor,
+                ftthRadiusColor: data.ftthRadiusColor || prev.ftthRadiusColor,
+                hfcRadiusColor: data.hfcRadiusColor || prev.hfcRadiusColor,
+                ftthRadius: data.ftthRadius || data.coverageRadius || prev.ftthRadius,
+                hfcRadius: data.hfcRadius || data.coverageRadius || prev.hfcRadius,
+            }));
+
+            // Load color zones from settings (Legacy support or advanced usage)
             if (data.coverageColorZones) {
                 try {
                     const zones = JSON.parse(data.coverageColorZones);
@@ -257,17 +291,7 @@ const CoverageManagement = () => {
         }
     };
 
-    const handleSaveSettings = async () => {
-        try {
-            await Promise.all([
-                fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageRadius', value: settings.coverageRadius }) }),
-                fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageColor', value: settings.coverageColor }) }),
-                fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'coverageColorZones', value: JSON.stringify(colorZones) }) })
-            ]);
-            setIsSettingsOpen(false);
-            alert("Settings saved!");
-        } catch (e) { alert("Failed to save settings"); }
-    };
+
 
     // Color Zone Management
     const addColorZone = () => {
@@ -794,32 +818,7 @@ const CoverageManagement = () => {
 
             {activeView === 'map' && (
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden relative group">
-                    {/* Legend Overlay */}
-                    <div className="absolute top-4 right-4 z-[1000] bg-white p-3 rounded-lg shadow-md border border-gray-200 text-xs text-gray-700 w-48 opacity-90 hover:opacity-100 transition-opacity">
-                        <h4 className="font-bold mb-2 border-b pb-1">Map Legend</h4>
-                        <div className="space-y-1.5">
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-[#2563eb] rounded-sm border border-white shadow-sm"></div>
-                                <span>Node FTTH (Active)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-[#2563eb] rounded-full border border-white shadow-sm"></div>
-                                <span>Node HFC/Hybrid (Active)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-green-500 rounded-full opacity-50"></div>
-                                <span>Radius Coverage</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-red-500 rounded-sm opacity-20 border border-red-500"></div>
-                                <span>Area Coverage (Poly)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 bg-red-500 rounded-full border border-white"></div>
-                                <span>Uncovered/Inactive</span>
-                            </div>
-                        </div>
-                    </div>
+
 
                     <div className="h-[500px] relative">
                         <MapContainer center={mapCenter} zoom={12} className="h-full w-full z-0" scrollWheelZoom={true}>
@@ -852,21 +851,20 @@ const CoverageManagement = () => {
                                         </Polygon>
                                     ) : (
                                         <>
-                                            {/* Render Coverage Radius Circles (Green for Covered) */}
-                                            {/* Only render if site is Active? Assuming yes. */}
-                                            {site.status !== 'Inactive' && colorZones.map((zone) => (
+                                            {/* Render Coverage Radius Circles based on Network Type */}
+                                            {site.status !== 'Inactive' && (
                                                 <Circle
-                                                    key={`c-${site.id}-${zone.id}`}
+                                                    key={`c-${site.id}`}
                                                     center={[site.ampliLat, site.ampliLong]}
-                                                    radius={parseInt(zone.radius)}
+                                                    radius={site.networkType === 'FTTH' ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50)}
                                                     pathOptions={{
-                                                        color: '#22c55e', // Green-500
-                                                        fillColor: '#22c55e',
-                                                        fillOpacity: 0.1, // Very transparent
+                                                        color: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
+                                                        fillColor: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
+                                                        fillOpacity: 0.1,
                                                         weight: 1
                                                     }}
                                                 />
-                                            ))}
+                                            )}
 
                                             {/* Marker on top */}
                                             <Marker
@@ -877,7 +875,9 @@ const CoverageManagement = () => {
                                                 <Popup>
                                                     <div className="text-xs space-y-1 min-w-[150px]">
                                                         <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{site.networkType}</span>
+                                                            <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", site.networkType === 'FTTH' ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
+                                                                {site.networkType}
+                                                            </span>
                                                             <span className="text-sky-600 font-semibold text-[10px]">Point</span>
                                                         </div>
                                                         <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
@@ -892,29 +892,38 @@ const CoverageManagement = () => {
                             ))}
                         </MapContainer>
 
-                        {/* Legend */}
+                        {/* Dynamic Legend based on Settings */}
                         <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 z-[1000] border">
-                            <h4 className="text-xs font-semibold mb-2 text-gray-700">Coverage Zones</h4>
+                            <h4 className="text-xs font-semibold mb-2 text-gray-700">Map Legend</h4>
                             <div className="space-y-1.5">
                                 {/* Polygon coverage legend */}
                                 {coverageData.some(s => s.polygonData && Array.isArray(s.polygonData) && s.polygonData.length > 0) && (
                                     <div className="flex items-center gap-2 text-xs border-b pb-1.5 mb-1.5">
-                                        <div
-                                            className="w-3 h-3 border-2 border-red-500 bg-red-500/10"
-                                            style={{ borderRadius: '2px' }}
-                                        ></div>
-                                        <span className="text-gray-700">Coverage Area (Polygon)</span>
+                                        <div className="w-3 h-3 border-2 border-red-500 bg-red-500/10" style={{ borderRadius: '2px' }}></div>
+                                        <span className="text-gray-700">Area Coverage</span>
                                     </div>
                                 )}
-                                {colorZones.map((zone) => (
-                                    <div key={`legend-${zone.id}`} className="flex items-center gap-2 text-xs">
-                                        <div
-                                            className="w-3 h-3 rounded-full border border-white shadow"
-                                            style={{ backgroundColor: zone.color }}
-                                        ></div>
-                                        <span className="text-gray-700">{zone.label} ({zone.radius}m)</span>
-                                    </div>
-                                ))}
+                                {/* FTTH Legend */}
+                                <div className="flex items-center gap-2 text-xs">
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.ftthRadiusColor || '#22c55e', borderRadius: '50%' }}></div>
+                                    <span className="text-gray-700">FTTH Radius ({settings.ftthRadius || 50}m)</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs">
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '0px' }}></div>
+                                    <span className="text-gray-700">FTTH Node</span>
+                                </div>
+
+                                <div className="border-t my-1"></div>
+
+                                {/* HFC Legend */}
+                                <div className="flex items-center gap-2 text-xs">
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.hfcRadiusColor || '#eab308', borderRadius: '50%' }}></div>
+                                    <span className="text-gray-700">HFC Radius ({settings.hfcRadius || 50}m)</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs">
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.hfcNodeColor || '#ea580c', borderRadius: '50%' }}></div>
+                                    <span className="text-gray-700">HFC Node</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1054,7 +1063,8 @@ const CoverageManagement = () => {
                         </div>
                     )}
                 </div>
-            )}
+            )
+            }
 
             {/* Edit/Add Modal */}
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? (isEditMode ? 'Edit Site' : 'Site Details') : 'Add New Site'} className="max-w-4xl">
@@ -1093,227 +1103,239 @@ const CoverageManagement = () => {
             </Modal>
 
             {/* Settings Modal */}
-            <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Coverage Settings" className="max-w-2xl">
+            <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Coverage Settings" className="max-w-xl">
                 <div className="space-y-6">
-                    {/* Coverage Color Zones */}
-                    <div>
-                        <div className="flex items-center justify-between mb-3">
-                            <label className="text-sm font-semibold text-gray-900">Coverage Color Zones</label>
-                            <Button size="sm" variant="secondary" onClick={addColorZone}>
-                                <Plus className="w-3 h-3 mr-1" /> Add Zone
-                            </Button>
-                        </div>
+                    <p className="text-sm text-gray-500">Configure appearance for map elements by network type.</p>
 
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                            {colorZones.map((zone) => (
-                                <div key={zone.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex-1 grid grid-cols-3 gap-2">
-                                            <div>
-                                                <label className="text-xs text-gray-600 mb-1 block">Label</label>
+                    {/* FTTH Settings */}
+                    <div className="border rounded-xl p-4 bg-blue-50/50 border-blue-100">
+                        <div className="flex items-center gap-2 mb-4 border-b border-blue-100 pb-2">
+                            <div className="w-3 h-3 bg-blue-600 rounded-sm"></div>
+                            <h3 className="font-semibold text-blue-900">FTTH Configuration</h3>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Node Marker Color</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={settings.ftthNodeColor || '#2563eb'}
+                                        onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value })}
+                                        className="h-8 w-12 rounded border cursor-pointer"
+                                    />
+                                    <span className="text-xs text-gray-500">{settings.ftthNodeColor}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Coverage Radius (m)</label>
+                                <input
+                                    type="number"
+                                    value={settings.ftthRadius || 50}
+                                    onChange={e => setSettings({ ...settings, ftthRadius: parseInt(e.target.value) || 0 })}
+                                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Coverage Area Color</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={settings.ftthRadiusColor || '#22c55e'}
+                                        onChange={e => setSettings({ ...settings, ftthRadiusColor: e.target.value })}
+                                        className="h-8 w-12 rounded border cursor-pointer"
+                                    />
+                                    <span className="text-xs text-gray-500">{settings.ftthRadiusColor}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* HFC Settings */}
+                    <div className="border rounded-xl p-4 bg-orange-50/50 border-orange-100">
+                        <div className="flex items-center gap-2 mb-4 border-b border-orange-100 pb-2">
+                            <div className="w-3 h-3 bg-orange-600 rounded-full"></div>
+                            <h3 className="font-semibold text-orange-900">HFC / Hybrid Configuration</h3>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Node Marker Color</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={settings.hfcNodeColor || '#ea580c'}
+                                        onChange={e => setSettings({ ...settings, hfcNodeColor: e.target.value })}
+                                        className="h-8 w-12 rounded border cursor-pointer"
+                                    />
+                                    <span className="text-xs text-gray-500">{settings.hfcNodeColor}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Coverage Radius (m)</label>
+                                <input
+                                    type="number"
+                                    value={settings.hfcRadius || 50}
+                                    onChange={e => setSettings({ ...settings, hfcRadius: parseInt(e.target.value) || 0 })}
+                                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Coverage Area Color</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={settings.hfcRadiusColor || '#eab308'}
+                                        onChange={e => setSettings({ ...settings, hfcRadiusColor: e.target.value })}
+                                        className="h-8 w-12 rounded border cursor-pointer"
+                                    />
+                                    <span className="text-xs text-gray-500">{settings.hfcRadiusColor}</span>
+
+
+                                    <div className="flex justify-end gap-2 pt-4 border-t">
+                                        <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
+                                        <Button onClick={handleSaveSettings}>Save Settings</Button>
+                                    </div>
+                                </div >
+                            </Modal >
+
+                            {/* Import Models (Mapping & Preview) - Reuse logic from before but cleaner markup */}
+                            < Modal isOpen={isMappingModalOpen} onClose={() => setIsMappingModalOpen(false)} title="Map Excel Columns" >
+                                <div className="space-y-4 max-h-[400px] overflow-auto">
+                                    {APP_FIELDS.map(f => (
+                                        <div key={f.key} className="flex gap-2 items-center text-sm">
+                                            <span className="w-1/3 font-medium">{f.label}</span>
+                                            <select className="flex-1 border rounded p-1" value={columnMapping[f.key] || ''} onChange={e => setColumnMapping({ ...columnMapping, [f.key]: e.target.value })}>
+                                                <option value="">-- Ignore --</option>
+                                                {excelColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button onClick={applyMapping}>Next: Preview</Button>
+                                    </div>
+                                </div>
+                            </Modal >
+
+                            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={`Preview Import (${importPreview.length} rows)`} className="max-w-4xl">
+                                <div className="space-y-3">
+                                    {/* Import Mode Selector */}
+                                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                        <p className="text-sm font-semibold text-gray-700 mb-3">📦 Pilih Mode Import:</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <label
+                                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
+                                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                                    }`}
+                                            >
                                                 <input
-                                                    type="text"
-                                                    value={zone.label}
-                                                    onChange={(e) => updateColorZone(zone.id, 'label', e.target.value)}
-                                                    className="w-full px-2 py-1.5 text-sm border rounded focus:ring-2 focus:ring-primary/20"
-                                                    placeholder="e.g., Primary"
+                                                    type="radio"
+                                                    name="importMode"
+                                                    value="insert"
+                                                    checked={importMode === 'insert'}
+                                                    onChange={() => setImportMode('insert')}
+                                                    className="mt-1 text-blue-600"
                                                 />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-gray-600 mb-1 block">Color</label>
-                                                <div className="flex gap-2 items-center">
-                                                    <input
-                                                        type="color"
-                                                        value={zone.color}
-                                                        onChange={(e) => updateColorZone(zone.id, 'color', e.target.value)}
-                                                        className="h-8 w-16 border rounded cursor-pointer"
-                                                    />
-                                                    <span className="text-xs text-gray-500">{zone.color}</span>
+                                                <div>
+                                                    <span className="font-semibold text-gray-900 text-sm">➕ Tambah Data Baru</span>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Semua data di file akan ditambahkan sebagai data baru. Data yang sudah ada di database tidak akan berubah.
+                                                    </p>
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-gray-600 mb-1 block">Radius (m)</label>
+                                            </label>
+                                            <label
+                                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
+                                                    ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                                    }`}
+                                            >
                                                 <input
-                                                    type="number"
-                                                    value={zone.radius}
-                                                    onChange={(e) => updateColorZone(zone.id, 'radius', parseInt(e.target.value) || 0)}
-                                                    className="w-full px-2 py-1.5 text-sm border rounded focus:ring-2 focus:ring-primary/20"
-                                                    placeholder="250"
+                                                    type="radio"
+                                                    name="importMode"
+                                                    value="upsert"
+                                                    checked={importMode === 'upsert'}
+                                                    onChange={() => setImportMode('upsert')}
+                                                    className="mt-1 text-amber-600"
                                                 />
+                                                <div>
+                                                    <span className="font-semibold text-gray-900 text-sm">🔄 Update & Tambah</span>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Data dengan <strong>Site ID</strong> yang sama akan diperbarui. Data baru akan ditambahkan.
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Statistics Banner */}
+                                    {importPreview.some(r => r.polygonData) && (
+                                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                            <div className="flex items-center gap-2 text-green-700">
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <span className="font-medium">Polygon Data Detected!</span>
+                                            </div>
+                                            <div className="text-xs text-green-600 mt-1">
+                                                {importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} items with polygon boundaries will be rendered as areas on the map.
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => deleteColorZone(zone.id)}
-                                            className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded"
-                                            title="Delete zone"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                    )}
+
+                                    <div className="max-h-[300px] overflow-auto border rounded text-xs">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="bg-gray-50 border-b">
+                                                    <th className="p-2">Type</th>
+                                                    <th className="p-2">Network</th>
+                                                    <th className="p-2">Site ID</th>
+                                                    <th className="p-2">Ampli Lat</th>
+                                                    <th className="p-2">Ampli Long</th>
+                                                    <th className="p-2">Locality</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {importPreview.slice(0, 50).map((r, i) => (
+                                                    <tr key={i} className="border-b">
+                                                        <td className="p-2">
+                                                            {r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0 ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                                                    🗺️ Polygon ({r.polygonData.length} pts)
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    📍 Point
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-2">{r.networkType}</td>
+                                                        <td className="p-2">{r.siteId}</td>
+                                                        <td className="p-2">{r.ampliLat?.toFixed(6)}</td>
+                                                        <td className="p-2">{r.ampliLong?.toFixed(6)}</td>
+                                                        <td className="p-2 max-w-[200px] truncate">{r.locality}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                    {/* Preview */}
-                                    <div className="mt-2 pt-2 border-t border-gray-200">
-                                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                                            <div
-                                                className="w-4 h-4 rounded-full border-2 border-white shadow"
-                                                style={{ backgroundColor: zone.color }}
-                                            ></div>
-                                            <span>Preview: {zone.label} - {zone.radius}m radius</span>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-gray-500">
+                                            Previewing first 50 rows.
+                                            Total: {importPreview.length} items
+                                            ({importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} polygons,
+                                            {importPreview.filter(r => !r.polygonData || !Array.isArray(r.polygonData) || r.polygonData.length === 0).length} points)
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
+                                            <Button onClick={confirmImport}>
+                                                {importMode === 'upsert' ? '🔄 Update & Import' : '➕ Start Import'}
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-
-                        <p className="text-xs text-gray-500 mt-2">
-                            💡 Zones akan ditampilkan di map dengan warna dan radius yang berbeda
-                        </p>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4 border-t">
-                        <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSaveSettings}>Save Settings</Button>
-                    </div>
-                </div>
-            </Modal>
-
-            {/* Import Models (Mapping & Preview) - Reuse logic from before but cleaner markup */}
-            <Modal isOpen={isMappingModalOpen} onClose={() => setIsMappingModalOpen(false)} title="Map Excel Columns">
-                <div className="space-y-4 max-h-[400px] overflow-auto">
-                    {APP_FIELDS.map(f => (
-                        <div key={f.key} className="flex gap-2 items-center text-sm">
-                            <span className="w-1/3 font-medium">{f.label}</span>
-                            <select className="flex-1 border rounded p-1" value={columnMapping[f.key] || ''} onChange={e => setColumnMapping({ ...columnMapping, [f.key]: e.target.value })}>
-                                <option value="">-- Ignore --</option>
-                                {excelColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                    ))}
-                    <div className="flex justify-end gap-2 pt-2">
-                        <Button onClick={applyMapping}>Next: Preview</Button>
-                    </div>
-                </div>
-            </Modal>
-
-            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={`Preview Import (${importPreview.length} rows)`} className="max-w-4xl">
-                <div className="space-y-3">
-                    {/* Import Mode Selector */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                        <p className="text-sm font-semibold text-gray-700 mb-3">📦 Pilih Mode Import:</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <label
-                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
-                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                    }`}
-                            >
-                                <input
-                                    type="radio"
-                                    name="importMode"
-                                    value="insert"
-                                    checked={importMode === 'insert'}
-                                    onChange={() => setImportMode('insert')}
-                                    className="mt-1 text-blue-600"
-                                />
-                                <div>
-                                    <span className="font-semibold text-gray-900 text-sm">➕ Tambah Data Baru</span>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Semua data di file akan ditambahkan sebagai data baru. Data yang sudah ada di database tidak akan berubah.
-                                    </p>
-                                </div>
-                            </label>
-                            <label
-                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
-                                    ? 'border-amber-500 bg-amber-50 shadow-sm'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                    }`}
-                            >
-                                <input
-                                    type="radio"
-                                    name="importMode"
-                                    value="upsert"
-                                    checked={importMode === 'upsert'}
-                                    onChange={() => setImportMode('upsert')}
-                                    className="mt-1 text-amber-600"
-                                />
-                                <div>
-                                    <span className="font-semibold text-gray-900 text-sm">🔄 Update & Tambah</span>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Data dengan <strong>Site ID</strong> yang sama akan diperbarui. Data baru akan ditambahkan.
-                                    </p>
-                                </div>
-                            </label>
+                            </Modal>
                         </div>
                     </div>
-
-                    {/* Statistics Banner */}
-                    {importPreview.some(r => r.polygonData) && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-green-700">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <span className="font-medium">Polygon Data Detected!</span>
-                            </div>
-                            <div className="text-xs text-green-600 mt-1">
-                                {importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} items with polygon boundaries will be rendered as areas on the map.
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="max-h-[300px] overflow-auto border rounded text-xs">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="bg-gray-50 border-b">
-                                    <th className="p-2">Type</th>
-                                    <th className="p-2">Network</th>
-                                    <th className="p-2">Site ID</th>
-                                    <th className="p-2">Ampli Lat</th>
-                                    <th className="p-2">Ampli Long</th>
-                                    <th className="p-2">Locality</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {importPreview.slice(0, 50).map((r, i) => (
-                                    <tr key={i} className="border-b">
-                                        <td className="p-2">
-                                            {r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0 ? (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                                    🗺️ Polygon ({r.polygonData.length} pts)
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                                    📍 Point
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="p-2">{r.networkType}</td>
-                                        <td className="p-2">{r.siteId}</td>
-                                        <td className="p-2">{r.ampliLat?.toFixed(6)}</td>
-                                        <td className="p-2">{r.ampliLong?.toFixed(6)}</td>
-                                        <td className="p-2 max-w-[200px] truncate">{r.locality}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-500">
-                            Previewing first 50 rows.
-                            Total: {importPreview.length} items
-                            ({importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} polygons,
-                            {importPreview.filter(r => !r.polygonData || !Array.isArray(r.polygonData) || r.polygonData.length === 0).length} points)
-                        </p>
-                        <div className="flex gap-2">
-                            <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
-                            <Button onClick={confirmImport}>
-                                {importMode === 'upsert' ? '🔄 Update & Import' : '➕ Start Import'}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            </Modal>
-        </div>
-    );
+                    );
 };
 
-export default CoverageManagement;
+                    export default CoverageManagement;
