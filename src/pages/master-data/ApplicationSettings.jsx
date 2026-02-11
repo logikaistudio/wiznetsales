@@ -27,25 +27,79 @@ const ApplicationSettings = () => {
         }
     };
 
-    const handleLogoUpload = (e) => {
+    const handleLogoUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        if (file.type !== 'image/png') {
-            alert('Please upload a PNG file.');
-            return;
-        }
+        // Allow converting other formats to PNG if needed, or keep strict. 
+        // User asked to auto-convert size. Usage of PNG usually implies transparency.
+        // We will stick to reading it and converting to PNG data URL with resize.
 
-        if (file.size > 500 * 1024) { // 500KB limit
-            alert('File size too large. Max 500KB.');
-            return;
-        }
+        setIsLoading(true);
 
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            setAppSettings(prev => ({ ...prev, app_logo: reader.result }));
-        };
-        reader.readAsDataURL(file);
+        try {
+            const compressedDataUrl = await compressImage(file, 400 * 1024); // 400KB target
+            setAppSettings(prev => ({ ...prev, app_logo: compressedDataUrl }));
+        } catch (error) {
+            console.error('Error processing image:', error);
+            alert('Error processing image. Please try another file.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const compressImage = (file, targetSize) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    // Initial check: if file size is already small enough, just return original
+                    // Base64 length is approx 1.33 * filesize
+                    // But we can just use the input file.size if it was PNG
+                    // However, to be safe and consistent, we check the data URL length
+
+                    let canvas = document.createElement('canvas');
+                    let ctx = canvas.getContext('2d');
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Initial draw
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    let dataUrl = canvas.toDataURL('image/png');
+
+                    // dataUrl.length is char count. 1 char = 1 byte usually in string, but represents binary data.
+                    // Base64 encoding: 4 chars = 3 bytes.
+                    // So bytes = length * 3/4
+                    // We want bytes <= targetSize
+
+                    const maxChars = targetSize * 1.37; // Approx safety margin (4/3 is 1.33, using 1.37 for safe buffer)
+
+                    let scale = 0.9;
+                    while (dataUrl.length > maxChars && scale > 0.1) {
+                        const newWidth = Math.floor(width * scale);
+                        const newHeight = Math.floor(height * scale);
+
+                        canvas.width = newWidth;
+                        canvas.height = newHeight;
+                        ctx.clearRect(0, 0, newWidth, newHeight);
+                        ctx.drawImage(img, 0, 0, newWidth, newHeight);
+
+                        dataUrl = canvas.toDataURL('image/png');
+                        scale -= 0.1;
+                    }
+
+                    resolve(dataUrl);
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
     };
 
     const saveSettings = async (e) => {
@@ -127,7 +181,7 @@ const ApplicationSettings = () => {
                                     <Upload className="w-4 h-4 mr-2" /> Upload Logo (PNG)
                                 </Button>
                                 <p className="text-xs text-gray-500 mt-2">
-                                    Recommended size: 200x200px. Max size: 500KB. PNG format only.
+                                    Recommended size: 200x200px. Auto-resized if {'>'} 400KB. PNG format only.
                                 </p>
                             </div>
                         </div>
