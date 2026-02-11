@@ -827,6 +827,22 @@ app.post('/api/settings', async (req, res) => {
     }
 });
 
+app.put('/api/settings', async (req, res) => {
+    try {
+        const settings = req.body;
+        for (const [key, value] of Object.entries(settings)) {
+            await db.query(`
+                INSERT INTO system_settings (key, value, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            `, [key, String(value)]);
+        }
+        res.json({ message: 'Settings updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // ==========================================
 // CUSTOMERS & PROSPECTS
@@ -1220,40 +1236,8 @@ app.get('/api/achievement', async (req, res) => {
 });
 
 
-// ==========================================
-// APP SETTINGS
-// ==========================================
-
-app.get('/api/settings', async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM app_settings');
-        const settings = {};
-        result.rows.forEach(row => {
-            settings[row.key] = row.value;
-        });
-        res.json(settings);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/settings', async (req, res) => {
-    try {
-        const settings = req.body; // { key: value, key2: value2 }
-
-        for (const [key, value] of Object.entries(settings)) {
-            await db.query(`
-                INSERT INTO app_settings (key, value, updated_at)
-                VALUES ($1, $2, NOW())
-                ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
-            `, [key, value]);
-        }
-
-        res.json({ message: 'Settings saved' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// Duplicate settings routes removed
+// See lines ~794 for active settings routes
 
 // ==========================================
 // TICKET MANAGEMENT (OMNIFLOW)
