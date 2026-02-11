@@ -28,10 +28,203 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Setup Schema Route
+// Setup Schema Route - IMPROVED for Vercel fixes
 app.get('/api/setup-schema', async (req, res) => {
-    // Just a wrapper to manual setup if needed, but preferred to use script
-    res.json({ message: 'Please run npm run server:setup' });
+    try {
+        console.log('Starting manual schema setup via API...');
+
+        // 1. Target Cities Fix
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS target_clusters (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL UNIQUE,
+                total_target INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS target_cities (
+                id SERIAL PRIMARY KEY,
+                cluster_id INTEGER REFERENCES target_clusters(id) ON DELETE CASCADE,
+                city_name VARCHAR(100),
+                province VARCHAR(100),
+                homepass INTEGER DEFAULT 0,
+                percentage DECIMAL(5,2) DEFAULT 0,
+                target INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            DO $$ BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='target_cities' AND column_name='target') THEN
+                    ALTER TABLE target_cities ADD COLUMN target INTEGER DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='target_clusters' AND column_name='total_target') THEN
+                    ALTER TABLE target_clusters ADD COLUMN total_target INTEGER DEFAULT 0;
+                END IF;
+            END $$;
+        `);
+
+        // 2. Hot News Fix
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS hot_news (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255),
+                content TEXT,
+                priority INTEGER DEFAULT 1,
+                start_date TIMESTAMP,
+                end_date TIMESTAMP,
+                is_active BOOLEAN DEFAULT true,
+                created_by VARCHAR(100),
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            DO $$ BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='hot_news' AND column_name='priority') THEN
+                    ALTER TABLE hot_news ADD COLUMN priority INTEGER DEFAULT 1;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='hot_news' AND column_name='start_date') THEN
+                    ALTER TABLE hot_news ADD COLUMN start_date TIMESTAMP DEFAULT NOW();
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='hot_news' AND column_name='end_date') THEN
+                    ALTER TABLE hot_news ADD COLUMN end_date TIMESTAMP DEFAULT (NOW() + interval '30 days');
+                END IF;
+            END $$;
+        `);
+
+        // 3. Person In Charge Table
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS person_in_charge (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255),
+                role VARCHAR(100),
+                employee_id VARCHAR(50),
+                email VARCHAR(255),
+                phone VARCHAR(50),
+                area VARCHAR(100),
+                position VARCHAR(100),
+                status VARCHAR(50) DEFAULT 'Active',
+                active_date DATE,
+                inactive_date DATE,
+                profile_image TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        // 4. Promos Fix
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS promos (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255),
+                valid_from DATE,
+                valid_to DATE,
+                price DECIMAL(12,2),
+                cogs DECIMAL(12,2),
+                description TEXT,
+                status VARCHAR(50) DEFAULT 'Active',
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            DO $$ BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='promos' AND column_name='valid_from') THEN
+                    ALTER TABLE promos ADD COLUMN valid_from DATE DEFAULT NOW();
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='promos' AND column_name='valid_to') THEN
+                    ALTER TABLE promos ADD COLUMN valid_to DATE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='promos' AND column_name='price') THEN
+                    ALTER TABLE promos ADD COLUMN price DECIMAL(12,2) DEFAULT 0;
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='promos' AND column_name='cogs') THEN
+                    ALTER TABLE promos ADD COLUMN cogs DECIMAL(12,2) DEFAULT 0;
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='promos' AND column_name='status') THEN
+                    ALTER TABLE promos ADD COLUMN status VARCHAR(50) DEFAULT 'Active';
+                END IF;
+            END $$;
+        `);
+
+        // 5. Products Fix
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS products (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255),
+                category VARCHAR(100),
+                service_type VARCHAR(50),
+                price DECIMAL(12,2),
+                cogs DECIMAL(12,2),
+                bandwidth VARCHAR(50),
+                release_date DATE,
+                status VARCHAR(50) DEFAULT 'Active',
+                 created_at TIMESTAMP DEFAULT NOW()
+            );
+            DO $$ BEGIN 
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='cogs') THEN
+                    ALTER TABLE products ADD COLUMN cogs DECIMAL(12,2) DEFAULT 0;
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='bandwidth') THEN
+                    ALTER TABLE products ADD COLUMN bandwidth VARCHAR(50);
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='release_date') THEN
+                    ALTER TABLE products ADD COLUMN release_date DATE DEFAULT NOW();
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='status') THEN
+                    ALTER TABLE products ADD COLUMN status VARCHAR(50) DEFAULT 'Active';
+                END IF;
+            END $$;
+        `);
+
+        // 6. Customers Fix
+        await db.query(`
+             DO $$ BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='is_active') THEN
+                    ALTER TABLE customers ADD COLUMN is_active BOOLEAN DEFAULT true;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='fat') THEN
+                    ALTER TABLE customers ADD COLUMN fat VARCHAR(100);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='prospect_date') THEN
+                    ALTER TABLE customers ADD COLUMN prospect_date DATE DEFAULT NOW();
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='product_name') THEN
+                    ALTER TABLE customers ADD COLUMN product_name VARCHAR(255);
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='type') THEN
+                    ALTER TABLE customers ADD COLUMN type VARCHAR(50);
+                END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='sales_id') THEN
+                    ALTER TABLE customers ADD COLUMN sales_id INTEGER;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='sales_name') THEN
+                    ALTER TABLE customers ADD COLUMN sales_name VARCHAR(100);
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='product_id') THEN
+                    ALTER TABLE customers ADD COLUMN product_id INTEGER;
+                END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='customer_id') THEN
+                    ALTER TABLE customers ADD COLUMN customer_id VARCHAR(100) UNIQUE;
+                END IF;
+                   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='area') THEN
+                    ALTER TABLE customers ADD COLUMN area VARCHAR(100);
+                END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='kabupaten') THEN
+                    ALTER TABLE customers ADD COLUMN kabupaten VARCHAR(100);
+                END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='kecamatan') THEN
+                    ALTER TABLE customers ADD COLUMN kecamatan VARCHAR(100);
+                END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='kelurahan') THEN
+                    ALTER TABLE customers ADD COLUMN kelurahan VARCHAR(100);
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='files') THEN
+                    ALTER TABLE customers ADD COLUMN files JSONB DEFAULT '[]';
+                END IF;
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='rfs_date') THEN
+                    ALTER TABLE customers ADD COLUMN rfs_date DATE;
+                END IF;
+            END $$;
+        `);
+
+        console.log('Schema setup completed successfully');
+        res.json({ message: 'Schema setup completed successfully via API endpoint.' });
+    } catch (err) {
+        console.error('Schema setup failed:', err);
+        res.status(500).json({ error: 'Schema setup failed', details: err.message });
+    }
 });
 
 // Auto-migration for products service_type
