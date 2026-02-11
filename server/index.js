@@ -543,17 +543,38 @@ app.post('/api/coverage/bulk', async (req, res) => {
 
         for (const item of data) {
             try {
+                // Mandatory fields validation: Network, Lat, Long
+                if (!item.networkType) throw new Error('Network Type is required');
+                if (item.ampliLat === undefined || item.ampliLat === null || item.ampliLat === '') throw new Error('Latitude is required');
+                if (item.ampliLong === undefined || item.ampliLong === null || item.ampliLong === '') throw new Error('Longitude is required');
+
                 const polygonJson = item.polygonData ? JSON.stringify(item.polygonData) : null;
-                const siteId = item.siteId || `SITE-${Date.now()}-${processed + 1}`;
-                const lat = item.ampliLat || 0;
-                const lng = item.ampliLong || 0;
+                // Auto-generate Site ID if missing
+                const siteId = item.siteId || `SITE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const lat = parseFloat(item.ampliLat);
+                const lng = parseFloat(item.ampliLong);
+
+                if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coordinates');
 
                 if (mode === 'upsert') {
-                    // Check if a record with same site_id AND similar coordinates exists
-                    const existing = await db.query(
-                        `SELECT id FROM coverage_sites WHERE site_id = $1 AND ampli_lat = $2 AND ampli_long = $3 LIMIT 1`,
-                        [siteId, lat, lng]
-                    );
+                    // Check if a record with same site_id matches (if siteId provided) 
+                    // OR check by coordinates if siteId was auto-generated? 
+                    // Usually upsert relies on a unique key. If user didn't provide siteId, we can't really upsert by ID.
+                    // We will assume if siteId IS provided, we check it. If not, we check coordinates.
+
+                    let existing = { rows: [] };
+                    if (item.siteId) {
+                        existing = await db.query(
+                            `SELECT id FROM coverage_sites WHERE site_id = $1 LIMIT 1`,
+                            [siteId]
+                        );
+                    } else {
+                        // Fallback check by coordinates if no Site ID provided in input
+                        existing = await db.query(
+                            `SELECT id FROM coverage_sites WHERE ampli_lat = $1 AND ampli_long = $2 LIMIT 1`,
+                            [lat, lng]
+                        );
+                    }
 
                     if (existing.rows.length > 0) {
                         // Update existing record
@@ -561,7 +582,7 @@ app.post('/api/coverage/bulk', async (req, res) => {
                             `UPDATE coverage_sites SET 
                                 network_type = $1, locality = $2, status = $3, polygon_data = $4, homepass_id = $5, updated_at = NOW()
                              WHERE id = $6`,
-                            [item.networkType || 'HFC', item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null, existing.rows[0].id]
+                            [item.networkType, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null, existing.rows[0].id]
                         );
                         updated++;
                     } else {
@@ -569,7 +590,7 @@ app.post('/api/coverage/bulk', async (req, res) => {
                         await db.query(
                             `INSERT INTO coverage_sites (network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id)
                              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [item.networkType || 'HFC', siteId, lat, lng, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null]
+                            [item.networkType, siteId, lat, lng, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null]
                         );
                         processed++;
                     }
@@ -578,7 +599,7 @@ app.post('/api/coverage/bulk', async (req, res) => {
                     await db.query(
                         `INSERT INTO coverage_sites (network_type, site_id, ampli_lat, ampli_long, locality, status, polygon_data, homepass_id)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                        [item.networkType || 'HFC', siteId, lat, lng, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null]
+                        [item.networkType, siteId, lat, lng, item.locality || '', item.status || 'Active', polygonJson, item.homepassId || null]
                     );
                     processed++;
                 }

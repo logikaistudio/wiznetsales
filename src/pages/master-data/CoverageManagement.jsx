@@ -20,11 +20,11 @@ Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, sh
 
 const APP_FIELDS = [
     { key: 'networkType', label: 'Network', required: true },
-    { key: 'siteId', label: 'Site ID', required: true },
+    { key: 'siteId', label: 'Site ID', required: false },
     { key: 'homepassId', label: 'Homepass ID', required: false },
     { key: 'ampliLat', label: 'Ampli Lat', required: true },
     { key: 'ampliLong', label: 'Ampli Long', required: true },
-    { key: 'locality', label: 'Locality', required: true },
+    { key: 'locality', label: 'Locality', required: false },
 ];
 
 const CoverageManagement = () => {
