@@ -2,7 +2,7 @@ import React, { createContext, useState, useContext, useEffect, useCallback, use
 
 const AuthContext = createContext(null);
 
-const SESSION_TIMEOUT_MS = 180 * 60 * 1000; // 180 minutes in milliseconds
+const SESSION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes in milliseconds
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
@@ -11,8 +11,8 @@ export const AuthProvider = ({ children }) => {
 
     const logout = useCallback(() => {
         setUser(null);
-        localStorage.removeItem('user');
-        localStorage.removeItem('lastActive');
+        // localStorage.removeItem('user'); // No longer using storage
+        // localStorage.removeItem('lastActive');
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
         }
@@ -20,8 +20,8 @@ export const AuthProvider = ({ children }) => {
 
     // Reset inactivity timer
     const resetInactivityTimer = useCallback(() => {
-        // Store last active timestamp
-        localStorage.setItem('lastActive', Date.now().toString());
+        // Store last active timestamp (in memory or storage if we wanted persistence, but we don't)
+        // localStorage.setItem('lastActive', Date.now().toString()); 
 
         // Clear existing timer
         if (timeoutRef.current) {
@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
 
         // Set new timer
         timeoutRef.current = setTimeout(() => {
-            alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 180 menit. Silakan login kembali.');
+            alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 20 menit. Silakan login kembali.');
             logout();
         }, SESSION_TIMEOUT_MS);
     }, [logout]);
@@ -39,6 +39,8 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         if (!user) return;
 
+        // Debounce activity handler slightly to avoid excessive calls if functionality was heavy, 
+        // but for simple reset it's fine. 
         const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
 
         const handleActivity = () => {
@@ -66,54 +68,19 @@ export const AuthProvider = ({ children }) => {
 
     // Validate session on mount
     useEffect(() => {
+        // Requirement: Logout on refresh. 
+        // We simply do NOT restore from localStorage.
+        // User starts as null (logged out).
+        setLoading(false);
+
+        /* 
+        // Previous persistence logic disabled:
         const validateSession = async () => {
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) {
-                // Check if session has expired based on last activity
-                const lastActive = parseInt(localStorage.getItem('lastActive') || '0');
-                if (lastActive > 0 && Date.now() - lastActive > SESSION_TIMEOUT_MS) {
-                    // Session expired
-                    localStorage.removeItem('user');
-                    localStorage.removeItem('lastActive');
-                    setUser(null);
-                    setLoading(false);
-                    return;
-                }
-
-                try {
-                    const userData = JSON.parse(storedUser);
-                    // Validate session with server
-                    const res = await fetch('/api/me', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: userData.id })
-                    });
-
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.valid) {
-                            setUser(data.user);
-                            localStorage.setItem('user', JSON.stringify(data.user));
-                        } else {
-                            localStorage.removeItem('user');
-                            localStorage.removeItem('lastActive');
-                            setUser(null);
-                        }
-                    } else {
-                        localStorage.removeItem('user');
-                        localStorage.removeItem('lastActive');
-                        setUser(null);
-                    }
-                } catch (error) {
-                    // Network error - keep stored user as fallback (offline support)
-                    console.warn('Session validation failed (offline?):', error.message);
-                    setUser(JSON.parse(storedUser));
-                }
-            }
-            setLoading(false);
+             const storedUser = localStorage.getItem('user');
+             // ... restoration logic ...
         };
-
         validateSession();
+        */
     }, []);
 
     const login = async (username, password) => {
@@ -126,8 +93,9 @@ export const AuthProvider = ({ children }) => {
             const data = await res.json();
             if (data.success) {
                 setUser(data.user);
-                localStorage.setItem('user', JSON.stringify(data.user));
-                localStorage.setItem('lastActive', Date.now().toString());
+                // We do NOT save to localStorage to ensure logout on refresh
+                // localStorage.setItem('user', JSON.stringify(data.user));
+                // localStorage.setItem('lastActive', Date.now().toString());
                 return { success: true };
             } else {
                 return { success: false, error: data.error };
