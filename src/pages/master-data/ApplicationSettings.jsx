@@ -188,14 +188,27 @@ const ApplicationSettings = () => {
                         </div>
                     </div>
 
+                    <div className="border-t pt-6">
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Coverage Map Settings</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <Input
+                                label="Default Coverage Radius (meters)"
+                                type="number"
+                                value={appSettings.coverageRadius || 50}
+                                onChange={e => setAppSettings({ ...appSettings, coverageRadius: e.target.value })}
+                                placeholder="50"
+                            />
+                        </div>
+                    </div>
+
                     <div className="pt-4 border-t border-gray-100">
                         <Button type="submit" disabled={isLoading}>
                             <Save className="w-4 h-4 mr-2" /> Save Settings
                         </Button>
                     </div>
-                </form>
-            </div>
-        </div>
+                </form >
+            </div >
+        </div >
     );
 };
 
