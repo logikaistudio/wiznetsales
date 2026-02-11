@@ -1337,7 +1337,6 @@ const CoverageManagement = () => {
                 </div>
             </Modal>
         </div>
-    </div >
     );
 };
 
