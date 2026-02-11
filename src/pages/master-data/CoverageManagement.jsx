@@ -623,6 +623,34 @@ const CoverageManagement = () => {
         iconSize: [20, 20], iconAnchor: [10, 10]
     });
 
+    // DOWNLOAD SAMPLE EXCEL
+    const handleDownloadSample = () => {
+        const headers = APP_FIELDS.map(f => f.key);
+        const sampleData = [
+            {
+                networkType: 'FTTH',
+                siteId: 'SITE-001',
+                homepassId: 'HP-001',
+                ampliLat: -6.200000,
+                ampliLong: 106.816666,
+                locality: 'Jakarta Pusat'
+            },
+            {
+                networkType: 'HFC',
+                siteId: 'SITE-002',
+                homepassId: '',
+                ampliLat: -6.210000,
+                ampliLong: 106.820000,
+                locality: 'Jakarta Selatan'
+            }
+        ];
+
+        const worksheet = XLSX.utils.json_to_sheet(sampleData, { header: headers });
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+        XLSX.writeFile(workbook, "Coverage_Import_Template.xlsx");
+    };
+
     return (
         <div className="p-4 md:p-6 max-w-full mx-auto space-y-4">
             {(isLoading || isSaving) && (
@@ -644,6 +672,9 @@ const CoverageManagement = () => {
                         <SettingsIcon className="w-4 h-4 text-gray-600" />
                     </Button>
                     <div className="w-px bg-gray-300 h-8 mx-1"></div>
+                    <Button variant="outline" onClick={handleDownloadSample}>
+                        <FileSpreadsheet className="w-4 h-4 mr-2" /> Sample XLS
+                    </Button>
                     <Button variant="outline" onClick={handleExport}>
                         <Download className="w-4 h-4 mr-2" /> Export XLS
                     </Button>
