@@ -633,10 +633,11 @@ const CoverageManagement = () => {
     const mapCenter = coverageData.length > 0 && coverageData[0].ampliLat ? [coverageData[0].ampliLat, coverageData[0].ampliLong] : [-6.2088, 106.8456];
 
     // Marker Icon
+    // Marker Icon
     const createCustomIcon = () => divIcon({
         className: 'custom-marker',
-        html: `<div style="background-color:${settings.coverageColor};width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`,
-        iconSize: [20, 20], iconAnchor: [10, 10]
+        html: `<div style="background-color:${settings.coverageColor};width:4px;height:4px;border-radius:50%;border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [4, 4], iconAnchor: [2, 2]
     });
 
     // DOWNLOAD SAMPLE EXCEL
