@@ -177,6 +177,9 @@ app.get('/api/setup-schema', async (req, res) => {
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='fat') THEN
                     ALTER TABLE customers ADD COLUMN fat VARCHAR(100);
                 END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='homepass_id') THEN
+                    ALTER TABLE customers ADD COLUMN homepass_id VARCHAR(100);
+                END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='prospect_date') THEN
                     ALTER TABLE customers ADD COLUMN prospect_date DATE DEFAULT NOW();
                 END IF;
@@ -1146,7 +1149,8 @@ app.get('/api/customers', async (req, res) => {
             isActive: row.is_active !== false,
             prospectDate: row.prospect_date,
             openTicketCount: row.open_ticket_count || 0,
-            fat: row.fat
+            fat: row.fat,
+            homepassId: row.homepass_id // Added homepassId
         })));
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1163,8 +1167,8 @@ app.post('/api/customers', async (req, res) => {
             INSERT INTO customers (
                 customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
                 latitude, longitude, phone, email, product_id, product_name, rfs_date,
-                files, sales_id, sales_name, status, prospect_date, is_active, fat
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                files, sales_id, sales_name, status, prospect_date, is_active, fat, homepass_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             RETURNING id
         `;
 
@@ -1172,7 +1176,7 @@ app.post('/api/customers', async (req, res) => {
             customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date(),
-            item.isActive !== false, item.fat
+            item.isActive !== false, item.fat, item.homepassId
         ];
 
         const result = await db.query(query, values);
@@ -1192,15 +1196,15 @@ app.put('/api/customers/:id', async (req, res) => {
             UPDATE customers SET
                 customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
                 latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
-                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22
-            WHERE id = $23
+                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22, homepass_id=$23
+            WHERE id = $24
         `;
 
         const values = [
             item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
-            item.isActive !== false, item.fat,
+            item.isActive !== false, item.fat, item.homepassId,
             id
         ];
 

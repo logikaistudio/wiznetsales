@@ -54,7 +54,9 @@ const Prospect = () => {
         status: 'Prospect',
         prospectDate: new Date().toISOString().split('T')[0],
         isActive: true,
-        files: []
+        files: [],
+        fat: '',
+        homepassId: '' // Added homepassId
     });
 
     // Coverage Check State
@@ -144,7 +146,8 @@ const Prospect = () => {
                 phone: '', email: '', productId: '', productName: '',
                 rfsDate: '', salesId: '', salesName: '', status: 'Prospect',
                 prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: [],
-                fat: ''
+                fat: '',
+                homepassId: '' // Added homepassId
             });
 
             // Set coverage status immediately
@@ -175,7 +178,8 @@ const Prospect = () => {
                 ...customer,
                 rfsDate: customer.rfsDate ? customer.rfsDate.split('T')[0] : '',
                 prospectDate: customer.prospectDate ? customer.prospectDate.split('T')[0] : '',
-                files: customer.files || []
+                files: customer.files || [],
+                homepassId: customer.homepassId || '' // Added homepassId
             });
             // Auto area select
             if (customer.area) {
@@ -191,7 +195,8 @@ const Prospect = () => {
                 latitude: '', longitude: '', phone: '', email: '', productId: '', productName: '',
                 rfsDate: '', salesId: '', salesName: '', status: 'Prospect',
                 prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: [],
-                fat: ''
+                fat: '',
+                homepassId: '' // Added homepassId
             });
             setFilteredCities([]);
         }
@@ -225,19 +230,20 @@ const Prospect = () => {
         { header: 'Phone (WA)', key: 'phone', width: 15 },
         { header: 'Email', key: 'email', width: 25 },
         { header: 'Address', key: 'address', width: 40 },
+        { header: 'Homepass ID', key: 'homepassId', width: 20 }, // Added Homepass ID
+        { header: 'FAT (Fiber Access Terminal)', key: 'fat', width: 20 },
         { header: 'Cluster/Area', key: 'area', width: 20 },
         { header: 'Kabupaten/City', key: 'kabupaten', width: 20 },
         { header: 'Kecamatan', key: 'kecamatan', width: 20 },
         { header: 'Kelurahan', key: 'kelurahan', width: 20 },
-        { header: 'FAT (Fiber Access Terminal)', key: 'fat', width: 20 }, // Added FAT
         { header: 'Latitude', key: 'latitude', width: 15 },
         { header: 'Longitude', key: 'longitude', width: 15 },
         { header: 'Product', key: 'productName', width: 25 },
         { header: 'Sales Person', key: 'salesName', width: 20 },
         { header: 'Status', key: 'status', width: 15 },
         { header: 'Prospect Date', key: 'prospectDate', width: 15 },
-        { header: 'RFS Date', key: 'rfsDate', width: 15 }, // Added RFS Date
-        { header: 'Photos', key: 'files', width: 50 }, // Added Photos
+        { header: 'RFS Date', key: 'rfsDate', width: 15 },
+        { header: 'Photos', key: 'files', width: 50 },
     ];
 
     const handleExport = () => {
@@ -489,6 +495,22 @@ const Prospect = () => {
                             <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                         </div>
                         <Input label="Address (Street/Block/No)" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+
+                        {/* Homepass ID & FAT */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input
+                                label="Homepass ID"
+                                value={formData.homepassId || ''}
+                                onChange={e => setFormData({ ...formData, homepassId: e.target.value })}
+                                placeholder="HP-1234..."
+                            />
+                            <Input
+                                label="FAT (Fiber Access Terminal)"
+                                value={formData.fat || ''}
+                                onChange={e => setFormData({ ...formData, fat: e.target.value })}
+                                placeholder="FAT-01-02"
+                            />
+                        </div>
                     </div>
 
                     {/* Location & Coverage */}
@@ -574,14 +596,6 @@ const Prospect = () => {
                                 />
                             </div>
                         </div>
-                        <div>
-                            <Input
-                                label="FAT (Fiber Access Terminal)"
-                                value={formData.fat || ''} // Ensure it's controlled
-                                onChange={e => setFormData({ ...formData, fat: e.target.value })}
-                                placeholder="Example: FAT-01-02"
-                            />
-                        </div>
                     </div>
 
                     {/* Product & Sales */}
@@ -637,8 +651,8 @@ const Prospect = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <label
                                 className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
-                                        ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
                                     }`}
                             >
                                 <input
@@ -658,8 +672,8 @@ const Prospect = () => {
                             </label>
                             <label
                                 className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
-                                        ? 'border-amber-500 bg-amber-50 shadow-sm'
-                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                    ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
                                     }`}
                             >
                                 <input
