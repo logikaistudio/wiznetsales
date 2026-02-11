@@ -137,29 +137,65 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const hasPermission = (permission) => {
+    const hasPermission = (permissionString) => {
         if (!user) return false;
-        if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'leader') return true;
 
-        const permissions = {
-            'sales': ['view_dashboard', 'view_coverage', 'view_achievement', 'manage_prospects'],
-            'user': ['view_dashboard']
-        };
+        // Super Admin & Admin always have full access
+        if (user.role === 'super_admin' || user.role === 'admin') return true;
 
-        const userPerms = permissions[user.role] || [];
-        return userPerms.includes(permission);
+        // If no dynamic permissions found, fallback to basic role check (backward compatibility)
+        if (!user.role_permissions) {
+            if (user.role === 'leader' || user.role === 'manager') return true; // Temporary fallback for legacy roles
+            if (user.role === 'sales') {
+                const allowed = ['dashboard:view', 'achievement:view', 'prospect_subscriber:view', 'coverage:view'];
+                return allowed.includes(permissionString);
+            }
+            return false;
+        }
+
+        // Parse permission string "menu_id:action"
+        const [menuId, action] = permissionString.split(':');
+
+        // Check if menu exists in permissions
+        if (!user.role_permissions[menuId]) return false;
+
+        // Check specific action (e.g. view, create, edit)
+        // If action is not specified, check if ANY permission exists for this menu
+        if (!action) return true;
+
+        return !!user.role_permissions[menuId][action];
     };
 
     const canAccessRoute = (path) => {
         if (!user) return false;
-        if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'leader') return true;
 
-        if (user.role === 'sales') {
-            const allowed = ['/', '/achievement', '/coverage', '/prospect'];
-            return allowed.includes(path);
-        }
+        // Super Admin & Admin always have full access
+        if (user.role === 'super_admin' || user.role === 'admin') return true;
 
-        return path === '/';
+        // Route to Menu ID Mapping
+        const routeMap = {
+            '/': 'dashboard',
+            '/achievement': 'achievement',
+            '/prospect': 'prospect_subscriber',
+            '/coverage': 'coverage',
+            '/omniflow': 'omniflow',
+            '/master-data/person-incharge': 'person_incharge',
+            '/master-data/targets': 'targets',
+            '/master-data/coverage-management': 'coverage_management',
+            '/master-data/product-management': 'product_management',
+            '/master-data/promo': 'promo',
+            '/master-data/hotnews': 'hot_news',
+            '/user-management': 'user_management',
+            '/application-settings': 'application_settings'
+        };
+
+        const menuId = routeMap[path];
+
+        // If path is not in map (public or unknown), allow access? Or deny?
+        // Let's deny by default for secure approach, unless it's a known public route
+        if (!menuId) return true; // Allow unmapped routes or handle them elsewhere
+
+        return hasPermission(`${menuId}:view`);
     };
 
     return (

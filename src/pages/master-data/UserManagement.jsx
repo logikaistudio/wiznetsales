@@ -112,11 +112,26 @@ const UserManagement = () => {
             const payload = { ...userFormData };
             if (!payload.password) delete payload.password;
 
-            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            await fetchUsers();
+            const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await response.json();
+
+            if (!response.ok) {
+                // Handle specific error messages from backend
+                alert(data.error || 'Error saving user');
+                return;
+            }
+
+            // Close modal first for better UX
             setUserModalOpen(false);
-            alert('User saved!');
-        } catch (e) { alert('Error saving user'); }
+
+            // Refresh user list
+            await fetchUsers();
+
+            alert('User saved successfully!');
+        } catch (e) {
+            console.error('Error saving user:', e);
+            alert('Error saving user: ' + e.message);
+        }
     };
 
     const deleteUser = async (id) => {

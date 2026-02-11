@@ -18,6 +18,7 @@ import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
+// Basic route protection based on permission
 const ProtectedRoute = ({ children }) => {
   const { user, loading, canAccessRoute } = useAuth();
   const location = useLocation();
@@ -30,35 +31,13 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Basic route protection based on role
+  // Basic route protection based on role/permission
   if (!canAccessRoute(location.pathname)) {
     // If user tries to access restricted page, redirect to their home or show unauthorized
-    // Simple fallback: redirect to home
+    // Simple fallback: redirect to home (dashboard)
     return <Navigate to="/" replace />;
   }
 
-  return children;
-};
-
-// Separate Master Data protection logic
-const MasterDataRoute = ({ children }) => {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-
-  if (!user || (user.role !== 'admin' && user.role !== 'leader' && user.role !== 'manager')) {
-    return <Navigate to="/" replace />;
-  }
-  return children;
-};
-
-// Separate Admin only protection logic
-const AdminRoute = ({ children }) => {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-
-  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-    return <Navigate to="/" replace />;
-  }
   return children;
 };
 
@@ -75,23 +54,21 @@ function App() {
             <Route path="prospect" element={<Prospect />} />
             <Route path="coverage" element={<Coverage />} />
 
-            {/* Omniflow restricted from Sales based on request "permissions" implied by "only view menu..." list */}
-            <Route path="omniflow" element={
-              <MasterDataRoute><Omniflow /></MasterDataRoute>
-            } />
+            {/* Omniflow */}
+            <Route path="omniflow" element={<Omniflow />} />
 
-            {/* User Management - Top Level Menu for Admin Only */}
-            <Route path="user-management" element={<AdminRoute><UserManagement /></AdminRoute>} />
-            <Route path="application-settings" element={<AdminRoute><ApplicationSettings /></AdminRoute>} />
+            {/* User Management */}
+            <Route path="user-management" element={<UserManagement />} />
+            <Route path="application-settings" element={<ApplicationSettings />} />
 
             <Route path="master-data">
               <Route index element={<Navigate to="person-incharge" replace />} />
-              <Route path="person-incharge" element={<MasterDataRoute><PersonIncharge /></MasterDataRoute>} />
-              <Route path="targets" element={<MasterDataRoute><Targets /></MasterDataRoute>} />
-              <Route path="coverage-management" element={<MasterDataRoute><CoverageManagement /></MasterDataRoute>} />
-              <Route path="product-management" element={<MasterDataRoute><ProductManagement /></MasterDataRoute>} />
-              <Route path="promo" element={<MasterDataRoute><Promo /></MasterDataRoute>} />
-              <Route path="hotnews" element={<MasterDataRoute><HotNews /></MasterDataRoute>} />
+              <Route path="person-incharge" element={<PersonIncharge />} />
+              <Route path="targets" element={<Targets />} />
+              <Route path="coverage-management" element={<CoverageManagement />} />
+              <Route path="product-management" element={<ProductManagement />} />
+              <Route path="promo" element={<Promo />} />
+              <Route path="hotnews" element={<HotNews />} />
             </Route>
           </Route>
         </Routes>

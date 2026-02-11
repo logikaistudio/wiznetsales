@@ -1405,9 +1405,12 @@ app.post('/api/login', async (req, res) => {
         const { username, password } = req.body;
         const passwordHash = hashPassword(password);
 
-        // Check against users table
+        // Check against users table and get role permissions
         const result = await db.query(
-            'SELECT id, username, email, full_name, role FROM users WHERE (username = $1 OR email = $1) AND password_hash = $2 AND is_active = true',
+            `SELECT u.id, u.username, u.email, u.full_name, u.role, r.permissions as role_permissions 
+             FROM users u
+             LEFT JOIN roles r ON LOWER(u.role) = LOWER(r.name)
+             WHERE (u.username = $1 OR u.email = $1) AND u.password_hash = $2 AND u.is_active = true`,
             [username, passwordHash]
         );
 
@@ -1433,7 +1436,10 @@ app.post('/api/me', async (req, res) => {
         }
 
         const result = await db.query(
-            'SELECT id, username, email, full_name, role FROM users WHERE id = $1 AND is_active = true',
+            `SELECT u.id, u.username, u.email, u.full_name, u.role, r.permissions as role_permissions 
+             FROM users u
+             LEFT JOIN roles r ON LOWER(u.role) = LOWER(r.name)
+             WHERE u.id = $1 AND u.is_active = true`,
             [userId]
         );
 
@@ -1477,6 +1483,18 @@ app.post('/api/users', async (req, res) => {
         const result = await db.query(query, [username, email, passwordHash, fullName, role || 'user']);
         res.json({ message: 'User created', user: result.rows[0] });
     } catch (err) {
+        console.error('Error creating user:', err);
+
+        // Handle unique constraint violations (duplicate username or email)
+        if (err.code === '23505') {
+            if (err.constraint === 'users_username_key') {
+                return res.status(400).json({ error: 'Username already exists' });
+            } else if (err.constraint === 'users_email_key') {
+                return res.status(400).json({ error: 'Email already exists' });
+            }
+            return res.status(400).json({ error: 'User with this username or email already exists' });
+        }
+
         res.status(500).json({ error: err.message });
     }
 });

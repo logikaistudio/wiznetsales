@@ -18,13 +18,14 @@ import {
     MapPin,
     Bell,
     Shield,
+    Settings,
     LogOut
 } from 'lucide-react';
 
 const Sidebar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, canAccessRoute, logout } = useAuth();
+    const { user, canAccessRoute, logout, hasPermission } = useAuth();
 
     const [isMasterDataOpen, setIsMasterDataOpen] = useState(
         location.pathname.startsWith('/master-data')
@@ -52,9 +53,10 @@ const Sidebar = () => {
         { name: 'Omniflow', path: '/omniflow', icon: Headphones },
     ].filter(item => canAccessRoute(item.path));
 
-    // Master Data only for Admin/Leader/Manager
-    const showMasterData = user && (user.role === 'admin' || user.role === 'leader' || user.role === 'manager');
-    const showUserManagement = user && (user.role === 'admin' || user.role === 'super_admin');
+
+
+    const showUserManagement = hasPermission('user_management:view');
+    const showAppSettings = hasPermission('application_settings:view'); // Add check for app settings too
 
     const masterDataItems = [
         { name: 'Person Incharge', path: '/master-data/person-incharge', icon: User },
@@ -63,7 +65,9 @@ const Sidebar = () => {
         { name: 'Product Management', path: '/master-data/product-management', icon: Box },
         { name: 'Promo', path: '/master-data/promo', icon: Tag },
         { name: 'Hot News', path: '/master-data/hotnews', icon: Bell },
-    ];
+    ].filter(item => canAccessRoute(item.path));
+
+    const showMasterData = masterDataItems.length > 0;
 
     const handleLogout = () => {
         logout();
@@ -98,37 +102,6 @@ const Sidebar = () => {
                         <span>{item.name}</span>
                     </NavLink>
                 ))}
-
-                {/* User Management - Separate Menu for Admin Only */}
-                {showUserManagement && (
-                    <>
-                        <NavLink
-                            to="/user-management"
-                            className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
-                                isActive
-                                    ? "bg-white/20 font-semibold shadow-md"
-                                    : "hover:bg-white/10 hover:translate-x-1"
-                            )}
-                        >
-                            <Shield className="w-5 h-5" />
-                            <span>User Management</span>
-                        </NavLink>
-
-                        <NavLink
-                            to="/application-settings"
-                            className={({ isActive }) => cn(
-                                "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
-                                isActive
-                                    ? "bg-white/20 font-semibold shadow-md"
-                                    : "hover:bg-white/10 hover:translate-x-1"
-                            )}
-                        >
-                            <Settings className="w-5 h-5" />
-                            <span>App Settings</span>
-                        </NavLink>
-                    </>
-                )}
 
                 {/* Master Data Group */}
                 {showMasterData && (
@@ -169,6 +142,39 @@ const Sidebar = () => {
                     </div>
                 )}
 
+                {/* User Management */}
+                {showUserManagement && (
+                    <NavLink
+                        to="/user-management"
+                        className={({ isActive }) => cn(
+                            "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
+                            isActive
+                                ? "bg-white/20 font-semibold shadow-md"
+                                : "hover:bg-white/10 hover:translate-x-1"
+                        )}
+                    >
+                        <Shield className="w-5 h-5" />
+                        <span>User Management</span>
+                    </NavLink>
+                )}
+
+                {/* Application Settings */}
+                {showAppSettings && (
+                    <NavLink
+                        to="/application-settings"
+                        className={({ isActive }) => cn(
+                            "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
+                            isActive
+                                ? "bg-white/20 font-semibold shadow-md"
+                                : "hover:bg-white/10 hover:translate-x-1"
+                        )}
+                    >
+                        <Settings className="w-5 h-5" />
+                        <span>App Settings</span>
+                    </NavLink>
+                )}
+
+
             </nav>
             <div className="p-4 border-t border-white/10">
                 <button
@@ -182,7 +188,7 @@ const Sidebar = () => {
                     © 2026 Netsales - LogikAi
                 </div>
             </div>
-        </aside>
+        </aside >
     );
 };
 
