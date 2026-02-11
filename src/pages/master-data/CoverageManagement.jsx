@@ -633,12 +633,18 @@ const CoverageManagement = () => {
     const mapCenter = coverageData.length > 0 && coverageData[0].ampliLat ? [coverageData[0].ampliLat, coverageData[0].ampliLong] : [-6.2088, 106.8456];
 
     // Marker Icon
-    // Marker Icon
-    const createCustomIcon = () => divIcon({
-        className: 'custom-marker',
-        html: `<div style="background-color:${settings.coverageColor};width:4px;height:4px;border-radius:50%;border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.3);"></div>`,
-        iconSize: [4, 4], iconAnchor: [2, 2]
-    });
+    const createNodeIcon = (networkType) => {
+        const isFTTH = networkType?.toUpperCase() === 'FTTH';
+        // FTTH = Square (rounded-sm), HFC/Hybrid = Circle (rounded-full)
+        // Color: Blue (#2563eb)
+        const shapeClass = isFTTH ? 'rounded-sm' : 'rounded-full';
+
+        return divIcon({
+            className: 'custom-marker',
+            html: `<div style="background-color:#2563eb;width:6px;height:6px;border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);" class="${shapeClass}"></div>`,
+            iconSize: [6, 6], iconAnchor: [3, 3]
+        });
+    };
 
     // DOWNLOAD SAMPLE EXCEL
     const handleDownloadSample = () => {
@@ -783,7 +789,34 @@ const CoverageManagement = () => {
             </div>
 
             {activeView === 'map' && (
-                <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden relative group">
+                    {/* Legend Overlay */}
+                    <div className="absolute top-4 right-4 z-[1000] bg-white p-3 rounded-lg shadow-md border border-gray-200 text-xs text-gray-700 w-48 opacity-90 hover:opacity-100 transition-opacity">
+                        <h4 className="font-bold mb-2 border-b pb-1">Map Legend</h4>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-[#2563eb] rounded-sm border border-white shadow-sm"></div>
+                                <span>Node FTTH (Active)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-[#2563eb] rounded-full border border-white shadow-sm"></div>
+                                <span>Node HFC/Hybrid (Active)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-green-500 rounded-full opacity-50"></div>
+                                <span>Radius Coverage</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-red-500 rounded-sm opacity-20 border border-red-500"></div>
+                                <span>Area Coverage (Poly)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-red-500 rounded-full border border-white"></div>
+                                <span>Uncovered/Inactive</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="h-[500px] relative">
                         <MapContainer center={mapCenter} zoom={12} className="h-full w-full z-0" scrollWheelZoom={true}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -794,10 +827,10 @@ const CoverageManagement = () => {
                                         <Polygon
                                             positions={site.polygonData}
                                             pathOptions={{
-                                                color: '#ef4444', // Red border like screenshot
+                                                color: '#ef4444',
                                                 fillColor: '#ef4444',
                                                 fillOpacity: 0.1,
-                                                weight: 3
+                                                weight: 2
                                             }}
                                             eventHandlers={{ click: () => handleOpenModal(site) }}
                                         >
@@ -815,22 +848,28 @@ const CoverageManagement = () => {
                                         </Polygon>
                                     ) : (
                                         <>
-                                            {/* Render multiple color zones for points */}
-                                            {colorZones.map((zone) => (
+                                            {/* Render Coverage Radius Circles (Green for Covered) */}
+                                            {/* Only render if site is Active? Assuming yes. */}
+                                            {site.status !== 'Inactive' && colorZones.map((zone) => (
                                                 <Circle
                                                     key={`c-${site.id}-${zone.id}`}
                                                     center={[site.ampliLat, site.ampliLong]}
                                                     radius={parseInt(zone.radius)}
                                                     pathOptions={{
-                                                        color: zone.color,
-                                                        fillColor: zone.color,
-                                                        fillOpacity: 0.1,
-                                                        weight: 2
+                                                        color: '#22c55e', // Green-500
+                                                        fillColor: '#22c55e',
+                                                        fillOpacity: 0.1, // Very transparent
+                                                        weight: 1
                                                     }}
                                                 />
                                             ))}
+
                                             {/* Marker on top */}
-                                            <Marker position={[site.ampliLat, site.ampliLong]} icon={createCustomIcon()} eventHandlers={{ click: () => handleOpenModal(site) }}>
+                                            <Marker
+                                                position={[site.ampliLat, site.ampliLong]}
+                                                icon={createNodeIcon(site.networkType)}
+                                                eventHandlers={{ click: () => handleOpenModal(site) }}
+                                            >
                                                 <Popup>
                                                     <div className="text-xs space-y-1 min-w-[150px]">
                                                         <div className="flex items-center gap-2 border-b pb-1 mb-1">
