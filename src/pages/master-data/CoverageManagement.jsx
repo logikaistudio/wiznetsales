@@ -633,16 +633,20 @@ const CoverageManagement = () => {
     const mapCenter = coverageData.length > 0 && coverageData[0].ampliLat ? [coverageData[0].ampliLat, coverageData[0].ampliLong] : [-6.2088, 106.8456];
 
     // Marker Icon
+    // Marker Icon
     const createNodeIcon = (networkType) => {
-        const isFTTH = networkType?.toUpperCase() === 'FTTH';
-        // FTTH = Square (rounded-sm), HFC/Hybrid = Circle (rounded-full)
-        // Color: Blue (#2563eb)
-        const shapeClass = isFTTH ? 'rounded-sm' : 'rounded-full';
+        const type = networkType ? String(networkType).trim().toUpperCase() : '';
+        const isFTTH = type === 'FTTH';
+
+        // Use explicit inline styles for shape to guarantee rendering
+        // FTTH: 0px radius (Square), Others: 50% radius (Circle)
+        const borderRadius = isFTTH ? '0px' : '50%';
 
         return divIcon({
-            className: 'custom-marker',
-            html: `<div style="background-color:#2563eb;width:6px;height:6px;border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);" class="${shapeClass}"></div>`,
-            iconSize: [6, 6], iconAnchor: [3, 3]
+            className: 'custom-node-marker', // Changed class name slightly to avoid CSS conflicts
+            html: `<div style="background-color:#2563eb;width:6px;height:6px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
+            iconSize: [6, 6],
+            iconAnchor: [3, 3]
         });
     };
 
