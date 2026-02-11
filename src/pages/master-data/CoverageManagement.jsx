@@ -1188,154 +1188,157 @@ const CoverageManagement = () => {
                                         className="h-8 w-12 rounded border cursor-pointer"
                                     />
                                     <span className="text-xs text-gray-500">{settings.hfcRadiusColor}</span>
-
-
-                                    <div className="flex justify-end gap-2 pt-4 border-t">
-                                        <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
-                                        <Button onClick={handleSaveSettings}>Save Settings</Button>
-                                    </div>
-                                </div >
-                            </Modal >
-
-                            {/* Import Models (Mapping & Preview) - Reuse logic from before but cleaner markup */}
-                            < Modal isOpen={isMappingModalOpen} onClose={() => setIsMappingModalOpen(false)} title="Map Excel Columns" >
-                                <div className="space-y-4 max-h-[400px] overflow-auto">
-                                    {APP_FIELDS.map(f => (
-                                        <div key={f.key} className="flex gap-2 items-center text-sm">
-                                            <span className="w-1/3 font-medium">{f.label}</span>
-                                            <select className="flex-1 border rounded p-1" value={columnMapping[f.key] || ''} onChange={e => setColumnMapping({ ...columnMapping, [f.key]: e.target.value })}>
-                                                <option value="">-- Ignore --</option>
-                                                {excelColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                                            </select>
-                                        </div>
-                                    ))}
-                                    <div className="flex justify-end gap-2 pt-2">
-                                        <Button onClick={applyMapping}>Next: Preview</Button>
-                                    </div>
                                 </div>
-                            </Modal >
-
-                            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={`Preview Import (${importPreview.length} rows)`} className="max-w-4xl">
-                                <div className="space-y-3">
-                                    {/* Import Mode Selector */}
-                                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                                        <p className="text-sm font-semibold text-gray-700 mb-3">📦 Pilih Mode Import:</p>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <label
-                                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
-                                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="importMode"
-                                                    value="insert"
-                                                    checked={importMode === 'insert'}
-                                                    onChange={() => setImportMode('insert')}
-                                                    className="mt-1 text-blue-600"
-                                                />
-                                                <div>
-                                                    <span className="font-semibold text-gray-900 text-sm">➕ Tambah Data Baru</span>
-                                                    <p className="text-xs text-gray-500 mt-1">
-                                                        Semua data di file akan ditambahkan sebagai data baru. Data yang sudah ada di database tidak akan berubah.
-                                                    </p>
-                                                </div>
-                                            </label>
-                                            <label
-                                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
-                                                    ? 'border-amber-500 bg-amber-50 shadow-sm'
-                                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="importMode"
-                                                    value="upsert"
-                                                    checked={importMode === 'upsert'}
-                                                    onChange={() => setImportMode('upsert')}
-                                                    className="mt-1 text-amber-600"
-                                                />
-                                                <div>
-                                                    <span className="font-semibold text-gray-900 text-sm">🔄 Update & Tambah</span>
-                                                    <p className="text-xs text-gray-500 mt-1">
-                                                        Data dengan <strong>Site ID</strong> yang sama akan diperbarui. Data baru akan ditambahkan.
-                                                    </p>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    {/* Statistics Banner */}
-                                    {importPreview.some(r => r.polygonData) && (
-                                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                                            <div className="flex items-center gap-2 text-green-700">
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                </svg>
-                                                <span className="font-medium">Polygon Data Detected!</span>
-                                            </div>
-                                            <div className="text-xs text-green-600 mt-1">
-                                                {importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} items with polygon boundaries will be rendered as areas on the map.
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="max-h-[300px] overflow-auto border rounded text-xs">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="bg-gray-50 border-b">
-                                                    <th className="p-2">Type</th>
-                                                    <th className="p-2">Network</th>
-                                                    <th className="p-2">Site ID</th>
-                                                    <th className="p-2">Ampli Lat</th>
-                                                    <th className="p-2">Ampli Long</th>
-                                                    <th className="p-2">Locality</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {importPreview.slice(0, 50).map((r, i) => (
-                                                    <tr key={i} className="border-b">
-                                                        <td className="p-2">
-                                                            {r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0 ? (
-                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                                                    🗺️ Polygon ({r.polygonData.length} pts)
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                                                    📍 Point
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                        <td className="p-2">{r.networkType}</td>
-                                                        <td className="p-2">{r.siteId}</td>
-                                                        <td className="p-2">{r.ampliLat?.toFixed(6)}</td>
-                                                        <td className="p-2">{r.ampliLong?.toFixed(6)}</td>
-                                                        <td className="p-2 max-w-[200px] truncate">{r.locality}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xs text-gray-500">
-                                            Previewing first 50 rows.
-                                            Total: {importPreview.length} items
-                                            ({importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} polygons,
-                                            {importPreview.filter(r => !r.polygonData || !Array.isArray(r.polygonData) || r.polygonData.length === 0).length} points)
-                                        </p>
-                                        <div className="flex gap-2">
-                                            <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
-                                            <Button onClick={confirmImport}>
-                                                {importMode === 'upsert' ? '🔄 Update & Import' : '➕ Start Import'}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </Modal>
+                            </div>
                         </div>
                     </div>
-                    );
+
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                        <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveSettings}>Save Settings</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Import Models (Mapping & Preview) - Reuse logic from before but cleaner markup */}
+            <Modal isOpen={isMappingModalOpen} onClose={() => setIsMappingModalOpen(false)} title="Map Excel Columns">
+                <div className="space-y-4 max-h-[400px] overflow-auto">
+                    {APP_FIELDS.map(f => (
+                        <div key={f.key} className="flex gap-2 items-center text-sm">
+                            <span className="w-1/3 font-medium">{f.label}</span>
+                            <select className="flex-1 border rounded p-1" value={columnMapping[f.key] || ''} onChange={e => setColumnMapping({ ...columnMapping, [f.key]: e.target.value })}>
+                                <option value="">-- Ignore --</option>
+                                {excelColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                    ))}
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button onClick={applyMapping}>Next: Preview</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={`Preview Import (${importPreview.length} rows)`} className="max-w-4xl">
+                <div className="space-y-3">
+                    {/* Import Mode Selector */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3">📦 Pilih Mode Import:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label
+                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'insert'
+                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="importMode"
+                                    value="insert"
+                                    checked={importMode === 'insert'}
+                                    onChange={() => setImportMode('insert')}
+                                    className="mt-1 text-blue-600"
+                                />
+                                <div>
+                                    <span className="font-semibold text-gray-900 text-sm">➕ Tambah Data Baru</span>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Semua data di file akan ditambahkan sebagai data baru. Data yang sudah ada di database tidak akan berubah.
+                                    </p>
+                                </div>
+                            </label>
+                            <label
+                                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${importMode === 'upsert'
+                                    ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="importMode"
+                                    value="upsert"
+                                    checked={importMode === 'upsert'}
+                                    onChange={() => setImportMode('upsert')}
+                                    className="mt-1 text-amber-600"
+                                />
+                                <div>
+                                    <span className="font-semibold text-gray-900 text-sm">🔄 Update & Tambah</span>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Data dengan <strong>Site ID</strong> yang sama akan diperbarui. Data baru akan ditambahkan.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Statistics Banner */}
+                    {importPreview.some(r => r.polygonData) && (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-green-700">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span className="font-medium">Polygon Data Detected!</span>
+                            </div>
+                            <div className="text-xs text-green-600 mt-1">
+                                {importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} items with polygon boundaries will be rendered as areas on the map.
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="max-h-[300px] overflow-auto border rounded text-xs">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-gray-50 border-b">
+                                    <th className="p-2">Type</th>
+                                    <th className="p-2">Network</th>
+                                    <th className="p-2">Site ID</th>
+                                    <th className="p-2">Ampli Lat</th>
+                                    <th className="p-2">Ampli Long</th>
+                                    <th className="p-2">Locality</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {importPreview.slice(0, 50).map((r, i) => (
+                                    <tr key={i} className="border-b">
+                                        <td className="p-2">
+                                            {r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0 ? (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                                    🗺️ Polygon ({r.polygonData.length} pts)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                    📍 Point
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="p-2">{r.networkType}</td>
+                                        <td className="p-2">{r.siteId}</td>
+                                        <td className="p-2">{r.ampliLat?.toFixed(6)}</td>
+                                        <td className="p-2">{r.ampliLong?.toFixed(6)}</td>
+                                        <td className="p-2 max-w-[200px] truncate">{r.locality}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <p className="text-xs text-gray-500">
+                            Previewing first 50 rows.
+                            Total: {importPreview.length} items
+                            ({importPreview.filter(r => r.polygonData && Array.isArray(r.polygonData) && r.polygonData.length > 0).length} polygons,
+                            {importPreview.filter(r => !r.polygonData || !Array.isArray(r.polygonData) || r.polygonData.length === 0).length} points)
+                        </p>
+                        <div className="flex gap-2">
+                            <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
+                            <Button onClick={confirmImport}>
+                                {importMode === 'upsert' ? '🔄 Update & Import' : '➕ Start Import'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Modal>
+        </div>
+    </div >
+    );
 };
 
-                    export default CoverageManagement;
+export default CoverageManagement;
