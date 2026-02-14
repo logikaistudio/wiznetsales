@@ -1,79 +1,45 @@
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import fs from 'fs';
+import db from './db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-dotenv.config({ path: join(__dirname, '..', '.env') });
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-});
-
-async function debugPolygonData() {
-    const client = await pool.connect();
-    const result = {};
-
+async function checkData() {
     try {
-        // Check if polygon_data column exists
-        const colCheck = await client.query(`
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'coverage_sites' AND column_name = 'polygon_data'
-        `);
-        result.columnExists = colCheck.rows.length > 0;
-        result.columnType = colCheck.rows.length > 0 ? colCheck.rows[0].data_type : null;
+        console.log('Checking polygon data...');
+        // Find a row with polygon data
+        const res = await db.query("SELECT id, site_id, polygon_data FROM coverage_sites WHERE polygon_data IS NOT NULL AND polygon_data::text != 'null' LIMIT 1");
 
-        // Check total rows
-        const total = await client.query('SELECT COUNT(*) as total FROM coverage_sites');
-        result.totalRows = parseInt(total.rows[0].total);
-
-        // Check rows with polygon_data
-        const withPolygon = await client.query('SELECT COUNT(*) as count FROM coverage_sites WHERE polygon_data IS NOT NULL');
-        result.rowsWithPolygon = parseInt(withPolygon.rows[0].count);
-
-        // Check sample data
-        const sample = await client.query(`
-            SELECT id, site_id, locality, 
-                   polygon_data IS NOT NULL as has_polygon
-            FROM coverage_sites 
-            ORDER BY id DESC
-            LIMIT 10
-        `);
-        result.sampleData = sample.rows;
-
-        // Check if there's any non-null polygon data
-        const polygonExample = await client.query(`
-            SELECT id, site_id, polygon_data
-            FROM coverage_sites 
-            WHERE polygon_data IS NOT NULL
-            LIMIT 1
-        `);
-
-        if (polygonExample.rows.length > 0) {
-            result.hasPolygonExample = true;
-            const data = polygonExample.rows[0].polygon_data;
-            result.polygonDataType = typeof data;
-            result.polygonDataPreview = JSON.stringify(data).substring(0, 300);
-            result.polygonDataLength = Array.isArray(data) ? data.length : 'not array';
+        if (res.rows.length === 0) {
+            console.log('No polygon data found.');
         } else {
-            result.hasPolygonExample = false;
+            const row = res.rows[0];
+            console.log('Found ID:', row.id);
+            console.log('Site ID:', row.site_id);
+            console.log('Type of polygon_data:', typeof row.polygon_data);
+            console.log('Value:', JSON.stringify(row.polygon_data, null, 2));
+
+            if (typeof row.polygon_data === 'string') {
+                try {
+                    const parsed = JSON.parse(row.polygon_data);
+                    console.log('Parsed type:', typeof parsed);
+                    console.log('Is Array?', Array.isArray(parsed));
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        console.log('First point:', parsed[0]);
+                        console.log('Is valid structure [[lat,lng]...]?');
+                    }
+                } catch (e) {
+                    console.error('JSON parse error:', e.message);
+                }
+            } else if (Array.isArray(row.polygon_data)) {
+                console.log('It is already an array.');
+                console.log('Is Array?', Array.isArray(row.polygon_data));
+                if (row.polygon_data.length > 0) {
+                    console.log('First point:', row.polygon_data[0]);
+                }
+            }
         }
-
-        // Write to file
-        fs.writeFileSync(join(__dirname, 'debug-result.json'), JSON.stringify(result, null, 2));
-
-    } catch (error) {
-        result.error = error.message;
-        fs.writeFileSync(join(__dirname, 'debug-result.json'), JSON.stringify(result, null, 2));
+    } catch (err) {
+        console.error(err);
     } finally {
-        client.release();
-        await pool.end();
+        process.exit();
     }
 }
 
-debugPolygonData();
+checkData();

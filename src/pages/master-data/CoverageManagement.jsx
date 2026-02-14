@@ -9,6 +9,7 @@ import Input from '../../components/ui/Input';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { kml } from '@tmcw/togeojson';
+import useDebounce from '../../hooks/useDebounce';
 
 import 'leaflet/dist/leaflet.css';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -26,6 +27,20 @@ const APP_FIELDS = [
     { key: 'ampliLong', label: 'Ampli Long', required: true },
     { key: 'locality', label: 'Locality', required: false },
 ];
+
+// Helper to fix potential coordinate issues (Leaflet [lat, lng] vs GeoJSON [lng, lat])
+const fixPolygon = (coords) => {
+    if (!Array.isArray(coords)) return [];
+    // Check first point
+    if (coords.length > 0 && Array.isArray(coords[0])) {
+        const first = coords[0];
+        // If lat > 90, likely swapped. Max lat is 90.
+        if (Math.abs(first[0]) > 90) {
+            return coords.map(p => [p[1], p[0]]);
+        }
+    }
+    return coords;
+};
 
 // Map Bounds Handler to optimize rendering
 const MapBoundsHandler = ({ onBoundsChange }) => {
@@ -47,6 +62,7 @@ const MapBoundsHandler = ({ onBoundsChange }) => {
 const CoverageManagement = () => {
     // Data State
     const [searchTerm, setSearchTerm] = useState('');
+    const [typeFilter, setTypeFilter] = useState('All'); // Added network filter
     const [coverageData, setCoverageData] = useState([]);
     const [activeView, setActiveView] = useState('table');
     const [currentPage, setCurrentPage] = useState(1);
@@ -65,6 +81,7 @@ const CoverageManagement = () => {
 
     // Map Optimization
     const [mapBounds, setMapBounds] = useState(null);
+    const debouncedBounds = useDebounce(mapBounds, 500);
     const [visibleCount, setVisibleCount] = useState(0);
 
     const handleSelectAll = (e) => {
@@ -127,19 +144,19 @@ const CoverageManagement = () => {
     const fileInputRef = useRef(null);
     const kmzFileInputRef = useRef(null);
 
-    // FETCH DATA
+    // FETCH DATA (Table View)
     const fetchData = useCallback(async (page = 1, search = '', view = 'table') => {
+        // Guard: Only fetch for table view here
+        if (view === 'map') return;
+
         setIsLoading(true);
         setLoadingMessage('Loading data...');
         try {
-            // If view is map, we fetch ALL data (all=true) so everything shows up.
-            // If view is table, we fetch paginated (limit=50).
-            const isMap = view === 'map';
             const queryParams = new URLSearchParams({
                 page: page.toString(),
                 limit: '50',
                 search,
-                all: isMap ? 'true' : 'false'
+                networkType: typeFilter // Pass filter
             });
 
             const res = await fetch(`/api/coverage?${queryParams.toString()}`);
@@ -147,9 +164,6 @@ const CoverageManagement = () => {
 
             if (json.data) {
                 setCoverageData(json.data);
-
-                // Only update pagination state if we are in table mode (or if server returns it anyway)
-                // When in map mode (all=true), totalPages is 1.
                 setTotalPages(json.pagination.totalPages);
                 setTotalRows(json.pagination.totalRows);
                 setCurrentPage(json.pagination.page);
@@ -159,7 +173,41 @@ const CoverageManagement = () => {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [typeFilter]); // Reload when filter changes
+
+    // FETCH MAP DATA (BBOX)
+    useEffect(() => {
+        if (activeView === 'map' && debouncedBounds) {
+            const fetchMapData = async () => {
+                setIsLoading(true); // Don't block UI too much but show spinner
+                try {
+                    const { _southWest, _northEast } = debouncedBounds;
+                    const queryParams = new URLSearchParams({
+                        minLat: _southWest.lat,
+                        maxLat: _northEast.lat,
+                        minLng: _southWest.lng,
+                        maxLng: _northEast.lng,
+                        search: searchTerm, // Search applies to map too
+                        networkType: typeFilter // Apply filter
+                    });
+
+                    // We can add type filter if 'typeFilter' is in scope. 
+                    // It seems 'typeFilter' is not in the scope of this replace block but available in component?
+                    // I will check if typeFilter exists. It does in component. However, this replacement block replaces fetchData definition.
+                    // The useEffect is best placed after fetchData.
+
+                    const res = await fetch(`/api/coverage?${queryParams.toString()}`);
+                    const json = await res.json();
+                    if (json.data) {
+                        setCoverageData(json.data);
+                        setTotalRows(json.pagination.totalRows);
+                    }
+                } catch (e) { console.error(e); }
+                finally { setIsLoading(false); }
+            };
+            fetchMapData();
+        }
+    }, [activeView, debouncedBounds, searchTerm, typeFilter]); // Add typeFilter and searchTerm dependencies
 
     const handleSaveSettings = async (e) => {
         e.preventDefault();
@@ -831,6 +879,25 @@ const CoverageManagement = () => {
                         <Layers className="w-4 h-4" /> Table
                     </button>
                 </div>
+
+                {/* Network Filter */}
+                <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl">
+                    {['All', 'FTTH', 'HFC'].map((type) => (
+                        <button
+                            key={type}
+                            onClick={() => setTypeFilter(type)}
+                            className={cn(
+                                "px-3 py-2 rounded-lg text-sm font-medium transition-all",
+                                typeFilter === type
+                                    ? "bg-white text-primary shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700"
+                            )}
+                        >
+                            {type}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="relative w-full md:w-72">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                     <input type="text" placeholder="Search site/ampli/city..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 w-full rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm bg-white" />
@@ -881,7 +948,7 @@ const CoverageManagement = () => {
                                         {/* If site has polygon data, render polygon border */}
                                         {site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0 ? (
                                             <Polygon
-                                                positions={site.polygonData}
+                                                positions={fixPolygon(site.polygonData)}
                                                 pathOptions={{
                                                     color: '#ef4444',
                                                     fillColor: '#ef4444',

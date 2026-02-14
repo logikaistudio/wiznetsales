@@ -56,8 +56,51 @@ const Prospect = () => {
         isActive: true,
         files: [],
         fat: '',
-        homepassId: '' // Added homepassId
+        homepassId: '', // Added homepassId
+        siteId: '' // Added for auto-fill
     });
+
+    // Auto-fill Site ID & FAT based on Homepass ID
+    useEffect(() => {
+        const checkHomepass = async () => {
+            const hid = formData.homepassId;
+            if (!hid || hid.length < 3) return;
+
+            try {
+                // Search for coverage with this Homepass ID
+                const res = await fetch(`/api/coverage?search=${encodeURIComponent(hid)}&limit=10`);
+                const json = await res.json();
+
+                if (json.data && Array.isArray(json.data)) {
+                    // Find exact match (case-insensitive) in homepassId OR siteId
+                    const match = json.data.find(d =>
+                        (d.homepassId && d.homepassId.toLowerCase() === hid.toLowerCase()) ||
+                        (d.siteId && d.siteId.toLowerCase() === hid.toLowerCase())
+                    );
+
+                    if (match) {
+                        // Found match! Auto-fill Site ID and FAT
+                        setFormData(prev => ({
+                            ...prev,
+                            siteId: match.siteId || '',
+                            fat: match.siteId || '', // Using Site ID as FAT ID if not distinct
+                            // Optionally update location if empty
+                            latitude: (!prev.latitude && match.ampliLat) ? match.ampliLat.toString() : prev.latitude,
+                            longitude: (!prev.longitude && match.ampliLong) ? match.ampliLong.toString() : prev.longitude
+                        }));
+
+                        // Also trigger visual feedback?
+                        // setCoverageStatus... maybe not needed as lat/long update triggers check.
+                    }
+                }
+            } catch (e) {
+                console.error("Homepass lookup failed", e);
+            }
+        };
+
+        const timer = setTimeout(checkHomepass, 800); // 800ms debounce
+        return () => clearTimeout(timer);
+    }, [formData.homepassId]);
 
     // Coverage Check State
     const [coverageStatus, setCoverageStatus] = useState({ checked: false, isCovered: false, distance: 0, node: null, loading: false, message: '' });
@@ -146,8 +189,9 @@ const Prospect = () => {
                 phone: '', email: '', productId: '', productName: '',
                 rfsDate: '', salesId: '', salesName: '', status: 'Prospect',
                 prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: [],
-                fat: '',
-                homepassId: '' // Added homepassId
+                fat: nearestPoint?.siteId || '',
+                homepassId: nearestPoint?.homepassId || nearestPoint?.siteId || '', // Use Homepass ID or Site ID
+                siteId: nearestPoint?.siteId || ''
             });
 
             // Set coverage status immediately
@@ -230,7 +274,8 @@ const Prospect = () => {
         { header: 'Phone (WA)', key: 'phone', width: 15 },
         { header: 'Email', key: 'email', width: 25 },
         { header: 'Address', key: 'address', width: 40 },
-        { header: 'Homepass ID', key: 'homepassId', width: 20 }, // Added Homepass ID
+        { header: 'Homepass ID', key: 'homepassId', width: 20 },
+        { header: 'Site ID', key: 'siteId', width: 20 }, // Added Site ID
         { header: 'FAT (Fiber Access Terminal)', key: 'fat', width: 20 },
         { header: 'Cluster/Area', key: 'area', width: 20 },
         { header: 'Kabupaten/City', key: 'kabupaten', width: 20 },
@@ -384,45 +429,44 @@ const Prospect = () => {
                     <p className="text-gray-500 mt-1">Manage pipeline, customers, and subscriptions.</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                    {canManageData && (
-                        <>
-                            <Button variant="outline" onClick={handleExport}>
-                                <Download className="w-4 h-4 mr-2" /> Export
-                            </Button>
-                            <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
-                            <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-                                <Upload className="w-4 h-4 mr-2" /> Import
-                            </Button>
-                            <div className="w-px bg-gray-300 mx-1"></div>
-                        </>
-                    )}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm w-48 lg:w-64 shadow-sm"
-                        />
+                    <div className="flex gap-2 flex-wrap items-center">
+                        <Button variant="outline" onClick={handleExport} className="h-9 text-xs">
+                            <Download className="w-4 h-4 mr-2" /> Export
+                        </Button>
+                        <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
+                        <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="h-9 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100">
+                            <Upload className="w-4 h-4 mr-2" /> Import
+                        </Button>
+                        <div className="w-px h-6 bg-gray-300 mx-2"></div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm w-48 lg:w-64 shadow-sm"
+                            />
+                        </div>
+                        <Button onClick={() => handleOpenModal()} className="shadow-blue-500/20 shadow-lg">
+                            <Plus className="w-4 h-4 mr-2" /> Add New
+                        </Button>
                     </div>
-                    <Button onClick={() => handleOpenModal()} className="shadow-blue-500/20 shadow-lg">
-                        <Plus className="w-4 h-4 mr-2" /> Add New
-                    </Button>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-200px)]">
                 {!isLoading ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="bg-gray-50/50 border-b border-gray-100">
+                    <div className="overflow-auto flex-1">
+                        <table className="w-full text-left border-collapse min-w-[2000px]">
+                            <thead className="bg-gray-50/90 border-b border-gray-100 sticky top-0 z-10 backdrop-blur-sm">
                                 <tr>
-                                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer Info</th>
-                                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
-                                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                                    {FIELD_MAP.map(field => (
+                                        <th key={field.key} className="p-3 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                                            {field.header}
+                                        </th>
+                                    ))}
+                                    <th className="p-3 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right sticky right-0 bg-gray-50/90 z-20 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
@@ -430,45 +474,59 @@ const Prospect = () => {
                                     (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (c.customerId || '').toLowerCase().includes(searchTerm.toLowerCase())
                                 ).map((customer) => (
-                                    <tr key={customer.id} className="hover:bg-gray-50/50 transition-colors group">
-                                        <td className="p-4">
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-sm shrink-0">
-                                                    {(customer.name || 'NN').substring(0, 2).toUpperCase()}
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-gray-900">{customer.name}</p>
-                                                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
-                                                        <Phone className="w-3 h-3" /> {customer.phone}
-                                                    </div>
-                                                </div>
+                                    <tr key={customer.id} className="hover:bg-blue-50/30 transition-colors group text-sm text-gray-700">
+                                        {FIELD_MAP.map(field => {
+                                            const val = customer[field.key];
+                                            let content = val;
+
+                                            // Formatting
+                                            if (field.key === 'status') {
+                                                content = (
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                                                        val === 'Active' ? "bg-green-100 text-green-700" :
+                                                            val === 'Churned' ? "bg-red-100 text-red-700" :
+                                                                "bg-blue-100 text-blue-700"
+                                                    )}>
+                                                        {val || 'Prospect'}
+                                                    </span>
+                                                );
+                                            } else if (field.key === 'files') {
+                                                content = (Array.isArray(val) && val.length > 0) ?
+                                                    <span className="text-xs text-blue-600 flex items-center gap-1"><FileText className="w-3 h-3" /> {val.length} Files</span> :
+                                                    <span className="text-gray-300">-</span>;
+                                            } else if (field.key === 'prospectDate' || field.key === 'rfsDate') {
+                                                content = val ? val.split('T')[0] : '-';
+                                            } else if (!val && val !== 0) {
+                                                content = <span className="text-gray-300">-</span>;
+                                            }
+
+                                            return (
+                                                <td key={field.key} className="p-3 whitespace-nowrap border-b border-gray-50">
+                                                    {content}
+                                                </td>
+                                            );
+                                        })}
+
+                                        <td className="p-3 whitespace-nowrap text-right sticky right-0 bg-white group-hover:bg-blue-50/30 border-b border-gray-50 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
+                                            <div className="flex justify-end gap-2">
+                                                <Button size="icon" variant="ghost" onClick={() => handleOpenModal(customer)} className="h-8 w-8 text-blue-600 hover:bg-blue-50">
+                                                    <Edit className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 text-red-500 hover:bg-red-50"
+                                                    onClick={async () => {
+                                                        if (confirm('Delete this customer?')) {
+                                                            await fetch(`/api/customers/${customer.id}`, { method: 'DELETE' });
+                                                            fetchData();
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
                                             </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="text-sm text-gray-600">
-                                                <p className="line-clamp-1">{customer.address}</p>
-                                                <p className="text-xs text-gray-400 mt-0.5">{customer.kelurahan}, {customer.kecamatan}</p>
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-xs font-medium text-gray-600">
-                                                {customer.productName || 'No Plan'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={cn(
-                                                "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",
-                                                customer.status === 'Active' ? "bg-green-50 text-green-700 border-green-100" :
-                                                    customer.status === 'Prospect' ? "bg-blue-50 text-blue-700 border-blue-100" :
-                                                        "bg-gray-50 text-gray-600 border-gray-200"
-                                            )}>
-                                                {customer.status}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <Button variant="ghost" size="sm" onClick={() => handleOpenModal(customer)}>
-                                                <Edit className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                                            </Button>
                                         </td>
                                     </tr>
                                 ))}
@@ -499,10 +557,10 @@ const Prospect = () => {
                         {/* Homepass ID & FAT */}
                         <div className="grid grid-cols-2 gap-3">
                             <Input
-                                label="Homepass ID"
+                                label="Homepass ID / Site ID"
                                 value={formData.homepassId || ''}
                                 onChange={e => setFormData({ ...formData, homepassId: e.target.value })}
-                                placeholder="HP-1234..."
+                                placeholder="HP-1234 or SITE-001..."
                             />
                             <Input
                                 label="FAT (Fiber Access Terminal)"

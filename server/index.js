@@ -180,6 +180,9 @@ app.get('/api/setup-schema', async (req, res) => {
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='homepass_id') THEN
                     ALTER TABLE customers ADD COLUMN homepass_id VARCHAR(100);
                 END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='site_id') THEN
+                    ALTER TABLE customers ADD COLUMN site_id VARCHAR(100);
+                END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='prospect_date') THEN
                     ALTER TABLE customers ADD COLUMN prospect_date DATE DEFAULT NOW();
                 END IF;
@@ -386,36 +389,52 @@ app.get('/api/coverage', async (req, res) => {
     const offset = (page - 1) * limit;
     const search = req.query.search || '';
     const showAll = req.query.all === 'true';
+    const { minLat, maxLat, minLng, maxLng, networkType } = req.query;
 
     try {
         let queryText = 'SELECT * FROM coverage_sites';
         let countQueryText = 'SELECT COUNT(*) FROM coverage_sites';
         let queryParams = [];
+        let conditions = [];
 
+        // Search Filter
         if (search) {
-            const searchClause = ` WHERE 
-        site_id ILIKE $1 OR 
-        locality ILIKE $1 OR 
-        network_type ILIKE $1`;
-            // Note: If using $1 for search, we need to push it
             queryParams.push(`%${search}%`);
+            conditions.push(`(site_id ILIKE $${queryParams.length} OR locality ILIKE $${queryParams.length} OR network_type ILIKE $${queryParams.length} OR homepass_id ILIKE $${queryParams.length})`);
+        }
 
-            // Adjust query text to use the correct parameter index
-            queryText += ` WHERE site_id ILIKE $${queryParams.length} OR locality ILIKE $${queryParams.length} OR network_type ILIKE $${queryParams.length}`;
-            countQueryText += ` WHERE site_id ILIKE $${queryParams.length} OR locality ILIKE $${queryParams.length} OR network_type ILIKE $${queryParams.length}`;
+        // Network Type Filter
+        if (networkType && networkType !== 'All') {
+            queryParams.push(networkType);
+            conditions.push(`network_type = $${queryParams.length}`);
+        }
+
+        // BBOX Filter (Map View optimization)
+        if (minLat && maxLat && minLng && maxLng) {
+            queryParams.push(minLat, maxLat);
+            conditions.push(`ampli_lat BETWEEN $${queryParams.length - 1} AND $${queryParams.length}`);
+
+            queryParams.push(minLng, maxLng);
+            conditions.push(`ampli_long BETWEEN $${queryParams.length - 1} AND $${queryParams.length}`);
+        }
+
+        if (conditions.length > 0) {
+            const whereClause = ' WHERE ' + conditions.join(' AND ');
+            queryText += whereClause;
+            countQueryText += whereClause;
         }
 
         let totalRows = 0;
         let rows = [];
 
-        if (showAll) {
-            // No pagination, return all matching records (with a safety limit)
-            queryText += ` ORDER BY id DESC LIMIT 20000`; // Safety cap
+        if (showAll || (minLat && maxLat)) {
+            // Map View: Return all matching records within bounds or all if requested
+            queryText += ` ORDER BY id DESC LIMIT 5000`; // Safety cap for map view
             const dataResponse = await db.query(queryText, queryParams);
             rows = dataResponse.rows;
             totalRows = rows.length;
         } else {
-            // Pagination
+            // Table View: Pagination
             const countResult = await db.query(countQueryText, queryParams);
             totalRows = parseInt(countResult.rows[0].count);
 
@@ -425,26 +444,29 @@ app.get('/api/coverage', async (req, res) => {
         }
 
         res.json({
-            data: rows.map(row => ({
-                id: row.id,
-                networkType: row.network_type,
-                siteId: row.site_id,
-                ampliLat: parseFloat(row.ampli_lat),
-                ampliLong: parseFloat(row.ampli_long),
-                locality: row.locality,
-                status: row.status,
-                homepassId: row.homepass_id || null,
-                createdAt: row.created_at,
-                // Handle polygon_data carefully - pg driver might return object or string depending on column type/driver version
-                polygonData: typeof row.polygon_data === 'string'
-                    ? JSON.parse(row.polygon_data)
-                    : row.polygon_data
-            })),
+            data: rows.map(row => {
+                let pData = row.polygon_data;
+                if (typeof pData === 'string') {
+                    try { pData = JSON.parse(pData); } catch (e) { }
+                }
+                return {
+                    id: row.id,
+                    networkType: row.network_type,
+                    siteId: row.site_id,
+                    ampliLat: parseFloat(row.ampli_lat),
+                    ampliLong: parseFloat(row.ampli_long),
+                    locality: row.locality,
+                    status: row.status,
+                    homepassId: row.homepass_id || null,
+                    createdAt: row.created_at,
+                    polygonData: pData
+                };
+            }),
             pagination: {
                 page,
-                limit: showAll ? totalRows : limit,
+                limit: (showAll || (minLat && maxLat)) ? totalRows : limit,
                 totalRows,
-                totalPages: showAll ? 1 : Math.ceil(totalRows / limit)
+                totalPages: (showAll || (minLat && maxLat)) ? 1 : Math.ceil(totalRows / limit)
             }
         });
     } catch (err) {
@@ -1187,7 +1209,8 @@ app.get('/api/customers', async (req, res) => {
             prospectDate: row.prospect_date,
             openTicketCount: row.open_ticket_count || 0,
             fat: row.fat,
-            homepassId: row.homepass_id // Added homepassId
+            homepassId: row.homepass_id, // Added homepassId
+            siteId: row.site_id // Added siteId
         })));
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1204,8 +1227,8 @@ app.post('/api/customers', async (req, res) => {
             INSERT INTO customers (
                 customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
                 latitude, longitude, phone, email, product_id, product_name, rfs_date,
-                files, sales_id, sales_name, status, prospect_date, is_active, fat, homepass_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                files, sales_id, sales_name, status, prospect_date, is_active, fat, homepass_id, site_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             RETURNING id
         `;
 
@@ -1213,7 +1236,7 @@ app.post('/api/customers', async (req, res) => {
             customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date(),
-            item.isActive !== false, item.fat, item.homepassId
+            item.isActive !== false, item.fat, item.homepassId, item.siteId
         ];
 
         const result = await db.query(query, values);
@@ -1233,15 +1256,15 @@ app.put('/api/customers/:id', async (req, res) => {
             UPDATE customers SET
                 customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
                 latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
-                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22, homepass_id=$23
-            WHERE id = $24
+                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22, homepass_id=$23, site_id=$24
+            WHERE id = $25
         `;
 
         const values = [
             item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
-            item.isActive !== false, item.fat, item.homepassId,
+            item.isActive !== false, item.fat, item.homepassId, item.siteId,
             id
         ];
 

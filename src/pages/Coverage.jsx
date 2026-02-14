@@ -6,6 +6,7 @@ import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle
 import { cn } from '../lib/utils';
 import Button from '../components/ui/Button';
 import 'leaflet/dist/leaflet.css';
+import useDebounce from '../hooks/useDebounce';
 
 // Fix Leaflet Icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -37,6 +38,18 @@ const customerIcon = (status) => divIcon({
     html: `<div style="background-color:${status === 'Covered' ? '#22c55e' : '#ef4444'};width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
     iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -10]
 });
+
+// Helper to fix potential coordinate issues
+const fixPolygon = (coords) => {
+    if (!Array.isArray(coords)) return [];
+    if (coords.length > 0 && Array.isArray(coords[0])) {
+        const first = coords[0];
+        if (Math.abs(first[0]) > 90) { // If lat > 90, swap
+            return coords.map(p => [p[1], p[0]]);
+        }
+    }
+    return coords;
+};
 
 // Helper: Haversine Distance (in meters)
 function getDistance(lat1, lon1, lat2, lon2) {
@@ -97,6 +110,8 @@ const Coverage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState({ covered: 0, uncovered: 0, total: 0 });
     const [mapBounds, setMapBounds] = useState(null);
+    const debouncedBounds = useDebounce(mapBounds, 500);
+    const [typeFilter, setTypeFilter] = useState('All');
 
     // Settings state - same as Coverage Management
     const [settings, setSettings] = useState({
@@ -142,30 +157,47 @@ const Coverage = () => {
     }, []);
 
     // Fetch Data
+    // Fetch Customers (On Mount)
     useEffect(() => {
-        const loadData = async () => {
-            setIsLoading(true);
+        const fetchCustomers = async () => {
             try {
-                // Fetch Coverage Points
-                // Increase limit to ensure we get all data, but rely on frontend bounds filtering for performance
-                const resCov = await fetch('/api/coverage?all=true');
-                const jsonCov = await resCov.json();
-                const points = jsonCov.data || [];
-                setCoveragePoints(points);
-
-                // Fetch Customers
                 const resCust = await fetch('/api/customers');
                 const customersLinks = await resCust.json();
                 setCustomers(customersLinks);
-
             } catch (err) {
-                console.error("Failed to load map data", err);
+                console.error("Failed to load customers", err);
+            }
+        };
+        fetchCustomers();
+    }, []);
+
+    // Fetch Coverage Data (BBOX + Filter)
+    useEffect(() => {
+        const loadCoverage = async () => {
+            // If bounds are not yet ready, we skip (map initializes quickly)
+            if (!debouncedBounds) return;
+
+            setIsLoading(true);
+            try {
+                const { _southWest, _northEast } = debouncedBounds;
+                const params = new URLSearchParams({
+                    minLat: _southWest.lat, maxLat: _northEast.lat,
+                    minLng: _southWest.lng, maxLng: _northEast.lng,
+                    networkType: typeFilter
+                });
+
+                const res = await fetch(`/api/coverage?${params.toString()}`);
+                const json = await res.json();
+
+                setCoveragePoints(json.data || []);
+            } catch (err) {
+                console.error("Failed to load coverage", err);
             } finally {
                 setIsLoading(false);
             }
         };
-        loadData();
-    }, []);
+        loadCoverage();
+    }, [debouncedBounds, typeFilter]);
 
     // Analyze Coverage Logic
     useEffect(() => {
@@ -393,6 +425,26 @@ const Coverage = () => {
                     </div>
                 )}
 
+                {/* Network Filter */}
+                <div className="flex justify-center mb-2 mt-2">
+                    <div className="flex space-x-1 bg-white p-1 rounded-lg border shadow-sm w-full">
+                        {['All', 'FTTH', 'HFC'].map((type) => (
+                            <button
+                                key={type}
+                                onClick={() => setTypeFilter(type)}
+                                className={cn(
+                                    "flex-1 px-2 py-1.5 rounded-md text-xs font-bold transition-all",
+                                    typeFilter === type
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-50 bg-gray-50"
+                                )}
+                            >
+                                {type}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Stats */}
                 {!manualCheckPoint && !isLoading && (
                     <div className="grid grid-cols-2 gap-2 text-center border-t pt-4 mt-2">
@@ -471,7 +523,7 @@ const Coverage = () => {
                                 return (
                                     <Polygon
                                         key={`cov-poly-${point.id || idx}`}
-                                        positions={point.polygonData}
+                                        positions={fixPolygon(point.polygonData)}
                                         pathOptions={{
                                             fillColor: '#ef4444',
                                             color: '#ef4444',
