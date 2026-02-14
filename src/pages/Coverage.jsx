@@ -27,9 +27,9 @@ const createNodeIcon = (networkType, settings) => {
 
     return divIcon({
         className: 'custom-node-marker',
-        html: `<div style="background-color:${nodeColor};width:6px;height:6px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
-        iconSize: [6, 6],
-        iconAnchor: [3, 3]
+        html: `<div style="background-color:${nodeColor};width:12px;height:12px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
     });
 };
 
@@ -147,7 +147,8 @@ const Coverage = () => {
                     ftthRadiusColor: data.ftthRadiusColor || '#22c55e',
                     hfcRadiusColor: data.hfcRadiusColor || '#eab308',
                     ftthRadius: parseInt(data.ftthRadius) || 50,
-                    hfcRadius: parseInt(data.hfcRadius) || 50
+                    hfcRadius: parseInt(data.hfcRadius) || 50,
+                    coverageOpacity: parseFloat(data.coverageOpacity) || 0.3
                 });
             } catch (err) {
                 console.error('Failed to load settings', err);
@@ -509,12 +510,12 @@ const Coverage = () => {
                                     }
                                 } else {
                                     // Fallback
-                                    if (points.length < 100) points.push(point);
+                                    if (points.length < 1000) points.push(point);
                                 }
                             }
                         });
 
-                        const renderedPoints = points.slice(0, 500);
+                        const renderedPoints = points.slice(0, 2000);
                         const renderList = [...polygons, ...renderedPoints];
 
                         return renderList.map((point, idx) => {
@@ -561,8 +562,8 @@ const Coverage = () => {
                                             fillColor: radiusColor,
                                             color: radiusColor,
                                             weight: 1,
-                                            opacity: 0.3,
-                                            fillOpacity: 0.1
+                                            opacity: settings.coverageOpacity || 0.3,
+                                            fillOpacity: (settings.coverageOpacity || 0.3) * 0.5 // Keep fill slightly more transparent than stroke
                                         }}
                                         radius={radius}
                                     />

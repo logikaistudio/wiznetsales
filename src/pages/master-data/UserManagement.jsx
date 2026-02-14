@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lock, Plus, Pencil, Trash2, Search, X, Save, Shield, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
@@ -84,10 +85,35 @@ const UserManagement = () => {
         } catch (e) { console.error(e); }
     };
 
+    const { user: currentUser } = useAuth(); // Import useAuth
+
     useEffect(() => {
         setIsLoading(true);
         Promise.all([fetchUsers(), fetchRoles(), fetchDataScopes()]).finally(() => setIsLoading(false));
     }, []);
+
+    // Filter users based on role hierarchy
+    const getVisibleUsers = () => {
+        if (!currentUser) return [];
+        if (currentUser.role === 'super_admin') return users;
+
+        // Admin can see:
+        // 1. Themselves
+        // 2. Other Admins (read-only usually, but prompt says "seeing")
+        // 3. Roles below (user, staff, etc)
+        // Admin CANNOT see: super_admin
+
+        return users.filter(u => u.role !== 'super_admin');
+    };
+
+    // Filter roles based on hierarchy
+    const getVisibleRoles = () => {
+        if (!currentUser) return [];
+        if (currentUser.role === 'super_admin') return roles;
+
+        // Admin cannot assign super_admin role
+        return roles.filter(r => r.name !== 'super_admin');
+    };
 
     // --- USER HANDLERS ---
     const handleOpenUserModal = (item = null) => {
@@ -247,7 +273,8 @@ const UserManagement = () => {
     };
 
     // --- RENDER HELPERS ---
-    const filteredUsers = users.filter(u =>
+    const visibleUsers = getVisibleUsers();
+    const filteredUsers = visibleUsers.filter(u =>
         (u.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -396,7 +423,7 @@ const UserManagement = () => {
                         {isUserEditMode && (
                             <Input label="Password" type="password" value={userFormData.password} onChange={e => setUserFormData({ ...userFormData, password: e.target.value })} placeholder={editingUser ? "Leave blank to keep current" : "Enter password"} />
                         )}
-                        <Select label="Role" value={userFormData.role} onChange={e => setUserFormData({ ...userFormData, role: e.target.value })} options={roles.map(r => ({ value: r.name, label: r.name.toUpperCase() }))} disabled={!isUserEditMode} />
+                        <Select label="Role" value={userFormData.role} onChange={e => setUserFormData({ ...userFormData, role: e.target.value })} options={getVisibleRoles().map(r => ({ value: r.name, label: r.name.toUpperCase() }))} disabled={!isUserEditMode} />
 
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                             <span className="text-sm font-medium text-gray-700 block mb-3">Account Status</span>

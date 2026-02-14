@@ -191,12 +191,32 @@ const ApplicationSettings = () => {
                     <div className="border-t pt-6">
                         <h3 className="text-lg font-medium text-gray-900 mb-4">Coverage Map Settings</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="md:col-span-2">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">Network Radii & Visualization</h4>
+                            </div>
                             <Input
-                                label="Default Coverage Radius (meters)"
+                                label="FTTH Radius (meters)"
                                 type="number"
-                                value={appSettings.coverageRadius || 50}
-                                onChange={e => setAppSettings({ ...appSettings, coverageRadius: e.target.value })}
+                                value={appSettings.ftthRadius || 50}
+                                onChange={e => setAppSettings({ ...appSettings, ftthRadius: e.target.value })}
                                 placeholder="50"
+                            />
+                            <Input
+                                label="HFC Radius (meters)"
+                                type="number"
+                                value={appSettings.hfcRadius || 50}
+                                onChange={e => setAppSettings({ ...appSettings, hfcRadius: e.target.value })}
+                                placeholder="50"
+                            />
+                            <Input
+                                label="Coverage Opacity (0.1 - 1.0)"
+                                type="number"
+                                step="0.1"
+                                min="0.1"
+                                max="1.0"
+                                value={appSettings.coverageOpacity || 0.3}
+                                onChange={e => setAppSettings({ ...appSettings, coverageOpacity: e.target.value })}
+                                placeholder="0.3"
                             />
                         </div>
                     </div>

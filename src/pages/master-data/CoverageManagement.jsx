@@ -737,9 +737,9 @@ const CoverageManagement = () => {
 
         return divIcon({
             className: 'custom-node-marker', // Changed class name slightly to avoid CSS conflicts
-            html: `<div style="background-color:#2563eb;width:6px;height:6px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
-            iconSize: [6, 6],
-            iconAnchor: [3, 3]
+            html: `<div style="background-color:#2563eb;width:12px;height:12px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
         });
     };
 
