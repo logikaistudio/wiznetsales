@@ -23,7 +23,7 @@ const createNodeIcon = (networkType, settings) => {
     const isFTTH = type === 'FTTH';
 
     const nodeColor = isFTTH ? (settings.ftthNodeColor || '#2563eb') : (settings.hfcNodeColor || '#ea580c');
-    const borderRadius = isFTTH ? '0px' : '50%'; // Square for FTTH, circle for HFC
+    const borderRadius = '50%'; // Always round
 
     return divIcon({
         className: 'custom-node-marker',
@@ -563,7 +563,7 @@ const Coverage = () => {
                                             color: radiusColor,
                                             weight: 1,
                                             opacity: settings.coverageOpacity || 0.3,
-                                            fillOpacity: (settings.coverageOpacity || 0.3) * 0.5 // Keep fill slightly more transparent than stroke
+                                            fillOpacity: settings.coverageOpacity || 0.3
                                         }}
                                         radius={radius}
                                     />
@@ -650,7 +650,7 @@ const Coverage = () => {
                 {/* Network Nodes */}
                 <div className="border-t pt-2 mt-2 space-y-1">
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 border border-white shadow-sm" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '0px' }}></div>
+                        <div className="w-3 h-3 border border-white shadow-sm" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '50%' }}></div>
                         <span>FTTH Node ({settings.ftthRadius}m)</span>
                     </div>
                     <div className="flex items-center gap-2">

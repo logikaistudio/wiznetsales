@@ -258,6 +258,7 @@ const CoverageManagement = () => {
                 hfcRadiusColor: data.hfcRadiusColor || prev.hfcRadiusColor,
                 ftthRadius: data.ftthRadius || data.coverageRadius || prev.ftthRadius,
                 hfcRadius: data.hfcRadius || data.coverageRadius || prev.hfcRadius,
+                coverageOpacity: parseFloat(data.coverageOpacity) || 0.3
             }));
 
             // Load color zones from settings (Legacy support or advanced usage)
@@ -730,14 +731,14 @@ const CoverageManagement = () => {
     const createNodeIcon = (networkType) => {
         const type = networkType ? String(networkType).trim().toUpperCase() : '';
         const isFTTH = type === 'FTTH';
+        const color = isFTTH ? (settings.ftthNodeColor || '#2563eb') : (settings.hfcNodeColor || '#ea580c');
 
-        // Use explicit inline styles for shape to guarantee rendering
-        // FTTH: 0px radius (Square), Others: 50% radius (Circle)
-        const borderRadius = isFTTH ? '0px' : '50%';
+        // Use distinct colors for types, but SAME shape (round) as requested
+        const borderRadius = '50%';
 
         return divIcon({
-            className: 'custom-node-marker', // Changed class name slightly to avoid CSS conflicts
-            html: `<div style="background-color:#2563eb;width:12px;height:12px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
+            className: 'custom-node-marker',
+            html: `<div style="background-color:${color};width:12px;height:12px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
             iconSize: [12, 12],
             iconAnchor: [6, 6]
         });
@@ -980,7 +981,7 @@ const CoverageManagement = () => {
                                                         pathOptions={{
                                                             color: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
                                                             fillColor: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
-                                                            fillOpacity: 0.1,
+                                                            fillOpacity: settings.coverageOpacity || 0.1, // Use setting or default
                                                             weight: 1
                                                         }}
                                                     />
@@ -1030,7 +1031,7 @@ const CoverageManagement = () => {
                                     <span className="text-gray-700">FTTH Radius ({settings.ftthRadius || 50}m)</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs">
-                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '0px' }}></div>
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '50%' }}></div>
                                     <span className="text-gray-700">FTTH Node</span>
                                 </div>
 
@@ -1310,6 +1311,25 @@ const CoverageManagement = () => {
                                     />
                                     <span className="text-xs text-gray-500">{settings.hfcRadiusColor}</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* General Settings */}
+                        <div className="border rounded-xl p-4 bg-gray-50 border-gray-200">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Coverage Opacity (Transparency)</label>
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="range"
+                                    min="0.1"
+                                    max="1.0"
+                                    step="0.1"
+                                    value={settings.coverageOpacity || 0.3}
+                                    onChange={e => setSettings({ ...settings, coverageOpacity: parseFloat(e.target.value) })}
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <span className="text-sm font-bold text-gray-700 w-12 text-center">
+                                    {Math.round((settings.coverageOpacity || 0.3) * 100)}%
+                                </span>
                             </div>
                         </div>
                     </div>
