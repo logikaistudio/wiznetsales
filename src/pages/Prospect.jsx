@@ -320,7 +320,8 @@ const Prospect = () => {
         });
 
         // 2. Create Sheet
-        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const headers = FIELD_MAP.map(f => f.header);
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport, { header: headers });
 
         // 3. Style Header (Attempt) - Note: Community version might ignore this
         // Set column widths
