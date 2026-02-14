@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
 import { Map, Search, Layers, Plus, Upload, Trash2, Pencil, Save, FileSpreadsheet, Settings as SettingsIcon, Loader2, RefreshCw, Download } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -27,6 +27,23 @@ const APP_FIELDS = [
     { key: 'locality', label: 'Locality', required: false },
 ];
 
+// Map Bounds Handler to optimize rendering
+const MapBoundsHandler = ({ onBoundsChange }) => {
+    const map = useMap();
+
+    useEffect(() => {
+        if (map) {
+            onBoundsChange(map.getBounds());
+        }
+    }, [map, onBoundsChange]);
+
+    useMapEvents({
+        moveend: () => onBoundsChange(map.getBounds()),
+        zoomend: () => onBoundsChange(map.getBounds())
+    });
+    return null;
+};
+
 const CoverageManagement = () => {
     // Data State
     const [searchTerm, setSearchTerm] = useState('');
@@ -45,6 +62,10 @@ const CoverageManagement = () => {
 
     // Bulk selection state
     const [selectedIds, setSelectedIds] = useState([]);
+
+    // Map Optimization
+    const [mapBounds, setMapBounds] = useState(null);
+    const [visibleCount, setVisibleCount] = useState(0);
 
     const handleSelectAll = (e) => {
         if (e.target.checked) {
@@ -823,73 +844,106 @@ const CoverageManagement = () => {
                     <div className="h-[500px] relative">
                         <MapContainer center={mapCenter} zoom={12} className="h-full w-full z-0" scrollWheelZoom={true}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                            {coverageData.filter(s => s.ampliLat && s.ampliLong).map((site) => (
-                                <React.Fragment key={`site-${site.id}`}>
-                                    {/* If site has polygon data, render polygon border */}
-                                    {site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0 ? (
-                                        <Polygon
-                                            positions={site.polygonData}
-                                            pathOptions={{
-                                                color: '#ef4444',
-                                                fillColor: '#ef4444',
-                                                fillOpacity: 0.1,
-                                                weight: 2
-                                            }}
-                                            eventHandlers={{ click: () => handleOpenModal(site) }}
-                                        >
-                                            <Popup>
-                                                <div className="text-xs space-y-1 min-w-[150px]">
-                                                    <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{site.networkType}</span>
-                                                        <span className="text-red-600 font-semibold text-[10px]">Area</span>
-                                                    </div>
-                                                    <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
-                                                    {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
-                                                    <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
-                                                </div>
-                                            </Popup>
-                                        </Polygon>
-                                    ) : (
-                                        <>
-                                            {/* Render Coverage Radius Circles based on Network Type */}
-                                            {site.status !== 'Inactive' && (
-                                                <Circle
-                                                    key={`c-${site.id}`}
-                                                    center={[site.ampliLat, site.ampliLong]}
-                                                    radius={site.networkType === 'FTTH' ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50)}
-                                                    pathOptions={{
-                                                        color: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
-                                                        fillColor: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
-                                                        fillOpacity: 0.1,
-                                                        weight: 1
-                                                    }}
-                                                />
-                                            )}
+                            <MapBoundsHandler onBoundsChange={setMapBounds} />
 
-                                            {/* Marker on top */}
-                                            <Marker
-                                                position={[site.ampliLat, site.ampliLong]}
-                                                icon={createNodeIcon(site.networkType)}
+                            {/* Render Logic: Optimize large datasets */}
+                            {(() => {
+                                // Filter data based on bounds to prevent rendering 20k markers
+                                const polygons = [];
+                                const points = [];
+
+                                coverageData.forEach(site => {
+                                    // 1. Always prioritize Polygons
+                                    if (site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0) {
+                                        polygons.push(site);
+                                    }
+                                    // 2. For points, check if within bounds
+                                    else if ((site.ampliLat || site.ampliLat === 0) && (site.ampliLong || site.ampliLong === 0)) {
+                                        // If bounds available, check intersection. Else (initial), show limited set
+                                        if (mapBounds) {
+                                            if (mapBounds.contains([site.ampliLat, site.ampliLong])) {
+                                                points.push(site);
+                                            }
+                                        } else {
+                                            // Fallback if bounds not ready (initial load)
+                                            if (points.length < 100) points.push(site);
+                                        }
+                                    }
+                                });
+
+                                // Limit visible points to reasonable number for DOM performance (e.g., 500)
+                                // If too many points in view, we slice them.
+                                const renderedPoints = points.slice(0, 500);
+                                const renderList = [...polygons, ...renderedPoints];
+
+                                return renderList.map((site) => (
+                                    <React.Fragment key={`site-${site.id}`}>
+                                        {/* If site has polygon data, render polygon border */}
+                                        {site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0 ? (
+                                            <Polygon
+                                                positions={site.polygonData}
+                                                pathOptions={{
+                                                    color: '#ef4444',
+                                                    fillColor: '#ef4444',
+                                                    fillOpacity: 0.1,
+                                                    weight: 2
+                                                }}
                                                 eventHandlers={{ click: () => handleOpenModal(site) }}
                                             >
                                                 <Popup>
                                                     <div className="text-xs space-y-1 min-w-[150px]">
                                                         <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                            <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", site.networkType === 'FTTH' ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
-                                                                {site.networkType}
-                                                            </span>
-                                                            <span className="text-sky-600 font-semibold text-[10px]">Point</span>
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{site.networkType}</span>
+                                                            <span className="text-red-600 font-semibold text-[10px]">Area</span>
                                                         </div>
                                                         <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
                                                         {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
                                                         <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
                                                     </div>
                                                 </Popup>
-                                            </Marker>
-                                        </>
-                                    )}
-                                </React.Fragment>
-                            ))}
+                                            </Polygon>
+                                        ) : (
+                                            <>
+                                                {/* Render Coverage Radius Circles based on Network Type */}
+                                                {site.status !== 'Inactive' && (
+                                                    <Circle
+                                                        key={`c-${site.id}`}
+                                                        center={[site.ampliLat, site.ampliLong]}
+                                                        radius={site.networkType === 'FTTH' ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50)}
+                                                        pathOptions={{
+                                                            color: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
+                                                            fillColor: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
+                                                            fillOpacity: 0.1,
+                                                            weight: 1
+                                                        }}
+                                                    />
+                                                )}
+
+                                                {/* Marker on top */}
+                                                <Marker
+                                                    position={[site.ampliLat, site.ampliLong]}
+                                                    icon={createNodeIcon(site.networkType)}
+                                                    eventHandlers={{ click: () => handleOpenModal(site) }}
+                                                >
+                                                    <Popup>
+                                                        <div className="text-xs space-y-1 min-w-[150px]">
+                                                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                                                <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", site.networkType === 'FTTH' ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
+                                                                    {site.networkType}
+                                                                </span>
+                                                                <span className="text-sky-600 font-semibold text-[10px]">Point</span>
+                                                            </div>
+                                                            <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
+                                                            {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
+                                                            <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
+                                                        </div>
+                                                    </Popup>
+                                                </Marker>
+                                            </>
+                                        )}
+                                    </React.Fragment>
+                                ));
+                            })()}
                         </MapContainer>
 
                         {/* Dynamic Legend based on Settings */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
 import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -59,13 +59,24 @@ const CONSTANTS = {
 };
 
 // Component for Map Events (Click Handling)
-const MapEvents = ({ onMapClick, isPicking }) => {
-    const map = useMapEvents({
+const MapEvents = ({ onMapClick, isPicking, onBoundsChange }) => {
+    const map = useMap();
+
+    // Initial bounds
+    useEffect(() => {
+        if (map && onBoundsChange) {
+            onBoundsChange(map.getBounds());
+        }
+    }, [map, onBoundsChange]);
+
+    useMapEvents({
         click(e) {
             if (isPicking) {
                 onMapClick(e.latlng);
             }
         },
+        moveend: () => onBoundsChange && onBoundsChange(map.getBounds()),
+        zoomend: () => onBoundsChange && onBoundsChange(map.getBounds())
     });
     // Change cursor
     useEffect(() => {
@@ -85,6 +96,7 @@ const Coverage = () => {
     const [analyzedCustomers, setAnalyzedCustomers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState({ covered: 0, uncovered: 0, total: 0 });
+    const [mapBounds, setMapBounds] = useState(null);
 
     // Settings state - same as Coverage Management
     const [settings, setSettings] = useState({
@@ -135,7 +147,8 @@ const Coverage = () => {
             setIsLoading(true);
             try {
                 // Fetch Coverage Points
-                const resCov = await fetch('/api/coverage?limit=2000');
+                // Increase limit to ensure we get all data, but rely on frontend bounds filtering for performance
+                const resCov = await fetch('/api/coverage?all=true');
                 const jsonCov = await resCov.json();
                 const points = jsonCov.data || [];
                 setCoveragePoints(points);
@@ -407,8 +420,8 @@ const Coverage = () => {
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
 
-                    {/* Handle Map Click */}
-                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} />
+                    {/* Handle Map Click & Bounds */}
+                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} onBoundsChange={setMapBounds} />
 
                     {/* Render Manual Check Marker */}
                     {manualCheckPoint && (
@@ -429,78 +442,101 @@ const Coverage = () => {
                         </Marker>
                     )}
 
-                    {/* Render Coverage Points (Network Nodes) */}
-                    {coveragePoints.filter(p => p.ampliLat).map((point, idx) => {
-                        // If point has polygon data, render as Polygon
-                        if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
+                    {/* Render Coverage Points (Network Nodes) - Optimized */}
+                    {(() => {
+                        const polygons = [];
+                        const points = [];
+
+                        coveragePoints.forEach(point => {
+                            if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
+                                polygons.push(point);
+                            } else if ((point.ampliLat || point.ampliLat === 0) && (point.ampliLong || point.ampliLong === 0)) {
+                                if (mapBounds) {
+                                    if (mapBounds.contains([point.ampliLat, point.ampliLong])) {
+                                        points.push(point);
+                                    }
+                                } else {
+                                    // Fallback
+                                    if (points.length < 100) points.push(point);
+                                }
+                            }
+                        });
+
+                        const renderedPoints = points.slice(0, 500);
+                        const renderList = [...polygons, ...renderedPoints];
+
+                        return renderList.map((point, idx) => {
+                            // If point has polygon data, render as Polygon
+                            if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
+                                return (
+                                    <Polygon
+                                        key={`cov-poly-${point.id || idx}`}
+                                        positions={point.polygonData}
+                                        pathOptions={{
+                                            fillColor: '#ef4444',
+                                            color: '#ef4444',
+                                            weight: 2,
+                                            opacity: 0.8,
+                                            fillOpacity: 0.15
+                                        }}
+                                    >
+                                        <Popup>
+                                            <div className="text-xs font-sans space-y-1 min-w-[150px]">
+                                                <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
+                                                    <span className="text-red-600 font-semibold text-[10px]">Area</span>
+                                                </div>
+                                                <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
+                                                {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
+                                                <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
+                                            </div>
+                                        </Popup>
+                                    </Polygon>
+                                );
+                            }
+
+                            // Default: render as Circle with marker
+                            const isFTTH = point.networkType === 'FTTH';
+                            const radiusColor = isFTTH ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308');
+                            const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
+
                             return (
-                                <Polygon
-                                    key={`cov-poly-${point.id || idx}`}
-                                    positions={point.polygonData}
-                                    pathOptions={{
-                                        fillColor: '#ef4444',
-                                        color: '#ef4444',
-                                        weight: 2,
-                                        opacity: 0.8,
-                                        fillOpacity: 0.15
-                                    }}
-                                >
-                                    <Popup>
-                                        <div className="text-xs font-sans space-y-1 min-w-[150px]">
-                                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
-                                                <span className="text-red-600 font-semibold text-[10px]">Area</span>
+                                <>
+                                    <Circle
+                                        key={`cov-circle-${point.id || idx}`}
+                                        center={[point.ampliLat, point.ampliLong]}
+                                        pathOptions={{
+                                            fillColor: radiusColor,
+                                            color: radiusColor,
+                                            weight: 1,
+                                            opacity: 0.3,
+                                            fillOpacity: 0.1
+                                        }}
+                                        radius={radius}
+                                    />
+                                    <Marker
+                                        key={`cov-marker-${point.id || idx}`}
+                                        position={[point.ampliLat, point.ampliLong]}
+                                        icon={createNodeIcon(point.networkType, settings)}
+                                    >
+                                        <Popup>
+                                            <div className="text-xs font-sans space-y-1 min-w-[150px]">
+                                                <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", isFTTH ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
+                                                        {point.networkType}
+                                                    </span>
+                                                    <span className="text-sky-600 font-semibold text-[10px]">Node</span>
+                                                </div>
+                                                <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
+                                                {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
+                                                <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
                                             </div>
-                                            <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
-                                            {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
-                                            <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
-                                        </div>
-                                    </Popup>
-                                </Polygon>
+                                        </Popup>
+                                    </Marker>
+                                </>
                             );
-                        }
-
-                        // Default: render as Circle with marker
-                        const isFTTH = point.networkType === 'FTTH';
-                        const radiusColor = isFTTH ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308');
-                        const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
-
-                        return (
-                            <>
-                                <Circle
-                                    key={`cov-circle-${point.id || idx}`}
-                                    center={[point.ampliLat, point.ampliLong]}
-                                    pathOptions={{
-                                        fillColor: radiusColor,
-                                        color: radiusColor,
-                                        weight: 1,
-                                        opacity: 0.3,
-                                        fillOpacity: 0.1
-                                    }}
-                                    radius={radius}
-                                />
-                                <Marker
-                                    key={`cov-marker-${point.id || idx}`}
-                                    position={[point.ampliLat, point.ampliLong]}
-                                    icon={createNodeIcon(point.networkType, settings)}
-                                >
-                                    <Popup>
-                                        <div className="text-xs font-sans space-y-1 min-w-[150px]">
-                                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", isFTTH ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
-                                                    {point.networkType}
-                                                </span>
-                                                <span className="text-sky-600 font-semibold text-[10px]">Node</span>
-                                            </div>
-                                            <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
-                                            {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
-                                            <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
-                            </>
-                        );
-                    })}
+                        });
+                    })()}
 
                     {/* Render Customer Points */}
                     {analyzedCustomers.map((cust, idx) => (
