@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
@@ -110,7 +110,7 @@ const Coverage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState({ covered: 0, uncovered: 0, total: 0 });
     const [mapBounds, setMapBounds] = useState(null);
-    const debouncedBounds = useDebounce(mapBounds, 500);
+    const debouncedBounds = useDebounce(mapBounds, 300);
     const [typeFilter, setTypeFilter] = useState('All');
 
     // Settings state - same as Coverage Management
@@ -158,13 +158,19 @@ const Coverage = () => {
     }, []);
 
     // Fetch Data
-    // Fetch Customers (On Mount)
+    // Fetch Customers with coords only (On Mount)
     useEffect(() => {
         const fetchCustomers = async () => {
             try {
                 const resCust = await fetch('/api/customers');
                 const customersLinks = await resCust.json();
-                setCustomers(customersLinks);
+                // Pre-filter: only keep customers with valid coordinates
+                const withCoords = customersLinks.filter(c => {
+                    const lat = parseFloat(c.latitude || c.lat);
+                    const lng = parseFloat(c.longitude || c.long || c.lng);
+                    return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+                });
+                setCustomers(withCoords);
             } catch (err) {
                 console.error("Failed to load customers", err);
             }
@@ -474,7 +480,7 @@ const Coverage = () => {
                     />
 
                     {/* Handle Map Click & Bounds */}
-                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} onBoundsChange={setMapBounds} />
+                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} onBoundsChange={useCallback((b) => setMapBounds(b), [])} />
 
                     {/* Render Manual Check Marker */}
                     {manualCheckPoint && (
@@ -515,7 +521,7 @@ const Coverage = () => {
                             }
                         });
 
-                        const renderedPoints = points.slice(0, 2000);
+                        const renderedPoints = points.slice(0, 1500);
                         const renderList = [...polygons, ...renderedPoints];
 
                         return renderList.map((point, idx) => {
@@ -554,7 +560,7 @@ const Coverage = () => {
                             const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
 
                             return (
-                                <>
+                                <React.Fragment key={`cov-group-${point.id || idx}`}>
                                     <Circle
                                         key={`cov-circle-${point.id || idx}`}
                                         center={[point.ampliLat, point.ampliLong]}
@@ -586,7 +592,7 @@ const Coverage = () => {
                                             </div>
                                         </Popup>
                                     </Marker>
-                                </>
+                                </React.Fragment>
                             );
                         });
                     })()}

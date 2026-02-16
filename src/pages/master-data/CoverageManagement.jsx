@@ -81,7 +81,7 @@ const CoverageManagement = () => {
 
     // Map Optimization
     const [mapBounds, setMapBounds] = useState(null);
-    const debouncedBounds = useDebounce(mapBounds, 500);
+    const debouncedBounds = useDebounce(mapBounds, 300);
     const [visibleCount, setVisibleCount] = useState(0);
 
     const handleSelectAll = (e) => {
@@ -912,7 +912,7 @@ const CoverageManagement = () => {
                     <div className="h-[500px] relative">
                         <MapContainer center={mapCenter} zoom={12} className="h-full w-full z-0" scrollWheelZoom={true}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                            <MapBoundsHandler onBoundsChange={setMapBounds} />
+                            <MapBoundsHandler onBoundsChange={useCallback((b) => setMapBounds(b), [])} />
 
                             {/* Render Logic: Optimize large datasets */}
                             {(() => {

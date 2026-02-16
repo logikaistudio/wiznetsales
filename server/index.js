@@ -156,9 +156,22 @@ app.get('/api/setup-schema', async (req, res) => {
 
         // 15. provinces (master data)
         await db.query(`CREATE TABLE IF NOT EXISTS provinces (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE, code VARCHAR(10), is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+        // 16. Performance Indexes
+        const indexes = [
+            'CREATE INDEX IF NOT EXISTS idx_coverage_lat_lng ON coverage_sites (ampli_lat, ampli_long)',
+            'CREATE INDEX IF NOT EXISTS idx_coverage_network_type ON coverage_sites (network_type)',
+            'CREATE INDEX IF NOT EXISTS idx_coverage_site_id ON coverage_sites (site_id)',
+            'CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status)',
+            'CREATE INDEX IF NOT EXISTS idx_customers_is_active ON customers (is_active)',
+            'CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status)',
+            'CREATE INDEX IF NOT EXISTS idx_tickets_customer_id ON tickets (customer_id)',
+        ];
+        for (const idx of indexes) {
+            try { await db.query(idx); } catch (e) { /* ignore if exists */ }
+        }
 
         console.log('Comprehensive schema setup completed successfully');
-        res.json({ message: 'All 15 tables created/verified successfully.' });
+        res.json({ message: 'All 15 tables created/verified successfully, indexes applied.' });
     } catch (err) {
         console.error('Schema setup failed:', err);
         res.status(500).json({ error: 'Schema setup failed', details: err.message });
@@ -323,8 +336,16 @@ app.get('/api/coverage', async (req, res) => {
     const showAll = req.query.all === 'true';
     const { minLat, maxLat, minLng, maxLng, networkType } = req.query;
 
+    // Determine if this is a map request (has bbox params)
+    const isMapRequest = !!(minLat && maxLat && minLng && maxLng);
+
+    // For map view, only select the columns we actually need (skip polygon_data for markers)
+    const mapColumns = 'id, network_type, site_id, homepass_id, ampli_lat, ampli_long, locality, status, polygon_data';
+    const tableColumns = 'id, network_type, site_id, homepass_id, ampli_lat, ampli_long, area_lat, area_long, locality, province, cluster, status, created_at';
+
     try {
-        let queryText = 'SELECT * FROM coverage_sites';
+        let selectCols = isMapRequest ? mapColumns : tableColumns;
+        let queryText = `SELECT ${selectCols} FROM coverage_sites`;
         let countQueryText = 'SELECT COUNT(*) FROM coverage_sites';
         let queryParams = [];
         let conditions = [];
@@ -342,7 +363,7 @@ app.get('/api/coverage', async (req, res) => {
         }
 
         // BBOX Filter (Map View optimization)
-        if (minLat && maxLat && minLng && maxLng) {
+        if (isMapRequest) {
             queryParams.push(minLat, maxLat);
             conditions.push(`ampli_lat BETWEEN $${queryParams.length - 1} AND $${queryParams.length}`);
 
@@ -359,9 +380,9 @@ app.get('/api/coverage', async (req, res) => {
         let totalRows = 0;
         let rows = [];
 
-        if (showAll || (minLat && maxLat)) {
-            // Map View: Return all matching records within bounds or all if requested
-            queryText += ` ORDER BY id DESC LIMIT 5000`; // Safety cap for map view
+        if (showAll || isMapRequest) {
+            // Map View: Return matching records within bounds, capped for performance
+            queryText += ` ORDER BY id DESC LIMIT 3000`;
             const dataResponse = await db.query(queryText, queryParams);
             rows = dataResponse.rows;
             totalRows = rows.length;
@@ -396,9 +417,9 @@ app.get('/api/coverage', async (req, res) => {
             }),
             pagination: {
                 page,
-                limit: (showAll || (minLat && maxLat)) ? totalRows : limit,
+                limit: (showAll || isMapRequest) ? totalRows : limit,
                 totalRows,
-                totalPages: (showAll || (minLat && maxLat)) ? 1 : Math.ceil(totalRows / limit)
+                totalPages: (showAll || isMapRequest) ? 1 : Math.ceil(totalRows / limit)
             }
         });
     } catch (err) {
