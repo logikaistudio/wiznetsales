@@ -86,25 +86,32 @@ const Promo = () => {
         };
 
         try {
+            let response;
             if (editingItem) {
-                await fetch(`/api/promos/${editingItem.id}`, {
+                response = await fetch(`/api/promos/${editingItem.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
             } else {
-                await fetch('/api/promos', {
+                response = await fetch('/api/promos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
             }
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Save failed');
+            }
+
             await fetchData();
             setIsEditMode(false);
             setIsModalOpen(false);
         } catch (error) {
-            alert('Save failed');
-            console.error(error);
+            alert('Save failed: ' + error.message);
+            console.error('Save error:', error);
         } finally {
             setIsSaving(false);
         }

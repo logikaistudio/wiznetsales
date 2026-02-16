@@ -71,17 +71,23 @@ const HotNews = () => {
             const url = editingItem ? `/api/hotnews/${editingItem.id}` : '/api/hotnews';
             const method = editingItem ? 'PUT' : 'POST';
 
-            await fetch(url, {
+            const response = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
             });
 
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Save failed');
+            }
+
             await fetchNews();
             setIsModalOpen(false);
             alert('Hot news saved successfully!');
         } catch (error) {
-            alert('Failed to save hot news');
+            alert('Failed to save hot news: ' + error.message);
+            console.error('Save error:', error);
         }
     };
 

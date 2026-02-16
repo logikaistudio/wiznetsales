@@ -94,25 +94,32 @@ const ProductManagement = () => {
         };
 
         try {
+            let response;
             if (editingItem) {
-                await fetch(`/api/products/${editingItem.id}`, {
+                response = await fetch(`/api/products/${editingItem.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
             } else {
-                await fetch('/api/products', {
+                response = await fetch('/api/products', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
             }
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Save failed');
+            }
+
             await fetchData();
             setIsEditMode(false);
             setIsModalOpen(false);
         } catch (error) {
-            alert('Save failed');
-            console.error(error);
+            alert('Save failed: ' + error.message);
+            console.error('Save error:', error);
         } finally {
             setIsSaving(false);
         }

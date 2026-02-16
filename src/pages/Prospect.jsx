@@ -253,12 +253,23 @@ const Prospect = () => {
         try {
             const url = selectedId ? `/api/customers/${selectedId}` : '/api/customers';
             const method = selectedId ? 'PUT' : 'POST';
-            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Save failed');
+            }
+
             await fetchData();
             setIsModalOpen(false);
             alert('Data saved successfully!');
         } catch (error) {
-            alert('Failed to save data');
+            alert('Failed to save data: ' + error.message);
+            console.error('Save error:', error);
         } finally {
             setIsSaving(false);
         }

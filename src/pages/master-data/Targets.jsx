@@ -125,25 +125,32 @@ const Targets = () => {
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            let response;
             if (editingCluster) {
-                await fetch(`/api/targets/${editingCluster.id}`, {
+                response = await fetch(`/api/targets/${editingCluster.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 });
             } else {
-                await fetch('/api/targets', {
+                response = await fetch('/api/targets', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 });
             }
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Save failed');
+            }
+
             await fetchData();
             setIsEditMode(false);
             setIsModalOpen(false);
         } catch (error) {
-            alert('Save failed');
-            console.error(error);
+            alert('Save failed: ' + error.message);
+            console.error('Save error:', error);
         } finally {
             setIsSaving(false);
         }

@@ -828,6 +828,9 @@ app.post('/api/products', async (req, res) => {
         const result = await db.query(query, [name, category, serviceType, price, cogs, bandwidth, releaseDate, status || 'Active']);
         res.json({ id: result.rows[0].id, message: 'Created' });
     } catch (err) {
+        console.error('[POST /api/products] Error:', err.message);
+        console.error('[POST /api/products] Stack:', err.stack);
+        console.error('[POST /api/products] Request body:', req.body);
         res.status(500).json({ error: err.message });
     }
 });
@@ -852,6 +855,7 @@ app.delete('/api/products/:id', async (req, res) => {
         await db.query('DELETE FROM products WHERE id=$1', [req.params.id]);
         res.json({ message: 'Deleted' });
     } catch (err) {
+        console.error('[DELETE /api/products] Error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -889,6 +893,9 @@ app.post('/api/promos', async (req, res) => {
         const result = await db.query(query, [name, validFrom, validTo, price, cogs, description, status || 'Active']);
         res.json({ id: result.rows[0].id, message: 'Created' });
     } catch (err) {
+        console.error('[POST /api/promos] Error:', err.message);
+        console.error('[POST /api/promos] Stack:', err.stack);
+        console.error('[POST /api/promos] Request body:', req.body);
         res.status(500).json({ error: err.message });
     }
 });
@@ -985,6 +992,9 @@ app.post('/api/targets', async (req, res) => {
         res.json({ id: clusterId, message: 'Cluster created' });
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error('[POST /api/targets] Error:', err.message);
+        console.error('[POST /api/targets] Stack:', err.stack);
+        console.error('[POST /api/targets] Request body:', req.body);
         res.status(500).json({ error: err.message });
     } finally {
         client.release();
@@ -1242,7 +1252,9 @@ app.post('/api/customers', async (req, res) => {
         const result = await db.query(query, values);
         res.json({ message: 'Customer created', id: result.rows[0].id });
     } catch (err) {
-        console.error(err);
+        console.error('[POST /api/customers] Error:', err.message);
+        console.error('[POST /api/customers] Stack:', err.stack);
+        console.error('[POST /api/customers] Request body:', req.body);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1343,6 +1355,9 @@ app.post('/api/hotnews', async (req, res) => {
         );
         res.json({ message: 'Hot news created', id: result.rows[0].id });
     } catch (err) {
+        console.error('[POST /api/hotnews] Error:', err.message);
+        console.error('[POST /api/hotnews] Stack:', err.stack);
+        console.error('[POST /api/hotnews] Request body:', req.body);
         res.status(500).json({ error: err.message });
     }
 });
