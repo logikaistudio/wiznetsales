@@ -2,7 +2,7 @@ import React, { createContext, useState, useContext, useEffect, useCallback, use
 
 const AuthContext = createContext(null);
 
-const SESSION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes in milliseconds
+const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes in milliseconds
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
@@ -30,27 +30,43 @@ export const AuthProvider = ({ children }) => {
 
         // Set new timer
         timeoutRef.current = setTimeout(() => {
-            alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 20 menit. Silakan login kembali.');
+            alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 60 menit. Silakan login kembali.');
             logout();
         }, SESSION_TIMEOUT_MS);
     }, [logout]);
 
-    // Track user activity
+    // Track user activity (throttled to avoid excessive timer resets)
     useEffect(() => {
         if (!user) return;
 
-        // Debounce activity handler slightly to avoid excessive calls if functionality was heavy, 
-        // but for simple reset it's fine. 
-        const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+        const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+        let lastActivity = Date.now();
+        const THROTTLE_MS = 30000; // Only reset timer once every 30 seconds
 
         const handleActivity = () => {
-            resetInactivityTimer();
+            const now = Date.now();
+            if (now - lastActivity > THROTTLE_MS) {
+                lastActivity = now;
+                resetInactivityTimer();
+            }
+        };
+
+        // Also track mousemove but heavily throttled
+        let mouseMoveTimer = null;
+        const handleMouseMove = () => {
+            if (!mouseMoveTimer) {
+                mouseMoveTimer = setTimeout(() => {
+                    mouseMoveTimer = null;
+                    handleActivity();
+                }, THROTTLE_MS);
+            }
         };
 
         // Attach event listeners
         events.forEach(event => {
             window.addEventListener(event, handleActivity, { passive: true });
         });
+        window.addEventListener('mousemove', handleMouseMove, { passive: true });
 
         // Start initial timer
         resetInactivityTimer();
@@ -60,8 +76,12 @@ export const AuthProvider = ({ children }) => {
             events.forEach(event => {
                 window.removeEventListener(event, handleActivity);
             });
+            window.removeEventListener('mousemove', handleMouseMove);
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current);
+            }
+            if (mouseMoveTimer) {
+                clearTimeout(mouseMoveTimer);
             }
         };
     }, [user, resetInactivityTimer]);
