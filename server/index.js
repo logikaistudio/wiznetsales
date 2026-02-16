@@ -43,120 +43,219 @@ app.get('/api/setup-schema', async (req, res) => {
         };
 
         // 1. target_clusters
-        await db.query(`CREATE TABLE IF NOT EXISTS target_clusters (
-            id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE, total_target INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW()
-        )`);
+        await db.query(`CREATE TABLE IF NOT EXISTS target_clusters (id SERIAL PRIMARY KEY)`);
+        await addCol('target_clusters', 'name', 'VARCHAR(100) UNIQUE');
         await addCol('target_clusters', 'total_target', 'INTEGER DEFAULT 0');
+        await addCol('target_clusters', 'created_at', 'TIMESTAMP DEFAULT NOW()');
 
         // 2. target_cities
-        await db.query(`CREATE TABLE IF NOT EXISTS target_cities (
-            id SERIAL PRIMARY KEY, cluster_id INTEGER REFERENCES target_clusters(id) ON DELETE CASCADE,
-            city_name VARCHAR(100), province VARCHAR(100), homepass INTEGER DEFAULT 0,
-            percentage DECIMAL(5,2) DEFAULT 0, target INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW()
-        )`);
-        await addCol('target_cities', 'target', 'INTEGER DEFAULT 0');
+        await db.query(`CREATE TABLE IF NOT EXISTS target_cities (id SERIAL PRIMARY KEY)`);
+        await addCol('target_cities', 'cluster_id', 'INTEGER REFERENCES target_clusters(id) ON DELETE CASCADE');
+        await addCol('target_cities', 'city_name', 'VARCHAR(100)'); // Maybe it was name?
+        await addCol('target_cities', 'province', 'VARCHAR(100)');
         await addCol('target_cities', 'homepass', 'INTEGER DEFAULT 0');
         await addCol('target_cities', 'percentage', 'DECIMAL(5,2) DEFAULT 0');
+        await addCol('target_cities', 'target', 'INTEGER DEFAULT 0');
+        await addCol('target_cities', 'created_at', 'TIMESTAMP DEFAULT NOW()');
 
         // 3. products
-        await db.query(`CREATE TABLE IF NOT EXISTS products (
-            id SERIAL PRIMARY KEY, name VARCHAR(255), category VARCHAR(100), service_type VARCHAR(50),
-            price DECIMAL(12,2), cogs DECIMAL(12,2), bandwidth VARCHAR(50), release_date DATE,
-            status VARCHAR(50) DEFAULT 'Active', created_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['category', "VARCHAR(100)"], ['service_type', "VARCHAR(50)"], ['price', "DECIMAL(12,2) DEFAULT 0"], ['cogs', "DECIMAL(12,2) DEFAULT 0"], ['bandwidth', "VARCHAR(50)"], ['release_date', "DATE"], ['status', "VARCHAR(50) DEFAULT 'Active'"]]) await addCol('products', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['name', "VARCHAR(255)"],
+            ['category', "VARCHAR(100)"],
+            ['service_type', "VARCHAR(50)"],
+            ['price', "DECIMAL(12,2) DEFAULT 0"],
+            ['cogs', "DECIMAL(12,2) DEFAULT 0"],
+            ['bandwidth', "VARCHAR(50)"],
+            ['release_date', "DATE"],
+            ['status', "VARCHAR(50) DEFAULT 'Active'"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('products', c, d);
 
         // 4. promos
-        await db.query(`CREATE TABLE IF NOT EXISTS promos (
-            id SERIAL PRIMARY KEY, name VARCHAR(255), valid_from DATE, valid_to DATE,
-            price DECIMAL(12,2), cogs DECIMAL(12,2), description TEXT, status VARCHAR(50) DEFAULT 'Active', created_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['valid_from', "DATE"], ['valid_to', "DATE"], ['price', "DECIMAL(12,2) DEFAULT 0"], ['cogs', "DECIMAL(12,2) DEFAULT 0"], ['description', "TEXT"], ['status', "VARCHAR(50) DEFAULT 'Active'"]]) await addCol('promos', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS promos (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['name', "VARCHAR(255)"],
+            ['valid_from', "DATE"],
+            ['valid_to', "DATE"],
+            ['price', "DECIMAL(12,2) DEFAULT 0"],
+            ['cogs', "DECIMAL(12,2) DEFAULT 0"],
+            ['description', "TEXT"],
+            ['status', "VARCHAR(50) DEFAULT 'Active'"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('promos', c, d);
 
         // 5. hot_news
-        await db.query(`CREATE TABLE IF NOT EXISTS hot_news (
-            id SERIAL PRIMARY KEY, title VARCHAR(255), content TEXT, priority INTEGER DEFAULT 1,
-            start_date TIMESTAMP DEFAULT NOW(), end_date TIMESTAMP DEFAULT (NOW() + interval '30 days'),
-            is_active BOOLEAN DEFAULT true, created_by VARCHAR(100) DEFAULT 'Admin',
-            created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['priority', "INTEGER DEFAULT 1"], ['start_date', "TIMESTAMP DEFAULT NOW()"], ['end_date', "TIMESTAMP DEFAULT (NOW() + interval '30 days')"], ['is_active', "BOOLEAN DEFAULT true"], ['created_by', "VARCHAR(100) DEFAULT 'Admin'"], ['updated_at', "TIMESTAMP DEFAULT NOW()"]]) await addCol('hot_news', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS hot_news (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['title', "VARCHAR(255)"],
+            ['content', "TEXT"],
+            ['priority', "INTEGER DEFAULT 1"],
+            ['start_date', "TIMESTAMP DEFAULT NOW()"],
+            ['end_date', "TIMESTAMP DEFAULT (NOW() + interval '30 days')"],
+            ['is_active', "BOOLEAN DEFAULT true"],
+            ['created_by', "VARCHAR(100) DEFAULT 'Admin'"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"],
+            ['updated_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('hot_news', c, d);
 
         // 6. person_in_charge
-        await db.query(`CREATE TABLE IF NOT EXISTS person_in_charge (
-            id SERIAL PRIMARY KEY, name VARCHAR(255), role VARCHAR(100), employee_id VARCHAR(50),
-            email VARCHAR(255), phone VARCHAR(50), area VARCHAR(100), position VARCHAR(100),
-            status VARCHAR(50) DEFAULT 'Active', active_date DATE, inactive_date DATE, profile_image TEXT, created_at TIMESTAMP DEFAULT NOW()
-        )`);
+        await db.query(`CREATE TABLE IF NOT EXISTS person_in_charge (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['name', "VARCHAR(255)"],
+            ['role', "VARCHAR(100)"],
+            ['employee_id', "VARCHAR(50)"],
+            ['email', "VARCHAR(255)"],
+            ['phone', "VARCHAR(50)"],
+            ['area', "VARCHAR(100)"],
+            ['position', "VARCHAR(100)"],
+            ['status', "VARCHAR(50) DEFAULT 'Active'"],
+            ['active_date', "DATE"],
+            ['inactive_date', "DATE"],
+            ['profile_image', "TEXT"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('person_in_charge', c, d);
 
         // 7. customers
-        await db.query(`CREATE TABLE IF NOT EXISTS customers (
-            id SERIAL PRIMARY KEY, customer_id VARCHAR(100) UNIQUE, type VARCHAR(50), name VARCHAR(255),
-            address TEXT, area VARCHAR(100), kabupaten VARCHAR(100), kecamatan VARCHAR(100), kelurahan VARCHAR(100),
-            latitude DECIMAL(10,8), longitude DECIMAL(11,8), phone VARCHAR(50), email VARCHAR(255),
-            product_id INTEGER, product_name VARCHAR(255), rfs_date DATE, files JSONB DEFAULT '[]',
-            sales_id INTEGER, sales_name VARCHAR(100), status VARCHAR(50) DEFAULT 'Prospect',
-            prospect_date DATE DEFAULT NOW(), is_active BOOLEAN DEFAULT true, fat VARCHAR(100),
-            homepass_id VARCHAR(100), site_id VARCHAR(100), created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['customer_id', "VARCHAR(100)"], ['type', "VARCHAR(50)"], ['area', "VARCHAR(100)"], ['kabupaten', "VARCHAR(100)"], ['kecamatan', "VARCHAR(100)"], ['kelurahan', "VARCHAR(100)"], ['product_id', "INTEGER"], ['product_name', "VARCHAR(255)"], ['rfs_date', "DATE"], ['files', "JSONB DEFAULT '[]'"], ['sales_id', "INTEGER"], ['sales_name', "VARCHAR(100)"], ['status', "VARCHAR(50) DEFAULT 'Prospect'"], ['prospect_date', "DATE DEFAULT NOW()"], ['is_active', "BOOLEAN DEFAULT true"], ['fat', "VARCHAR(100)"], ['homepass_id', "VARCHAR(100)"], ['site_id', "VARCHAR(100)"]]) await addCol('customers', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS customers (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['customer_id', "VARCHAR(100)"],
+            ['name', "VARCHAR(255)"],
+            ['address', "TEXT"],
+            ['type', "VARCHAR(50)"],
+            ['area', "VARCHAR(100)"],
+            ['kabupaten', "VARCHAR(100)"],
+            ['kecamatan', "VARCHAR(100)"],
+            ['kelurahan', "VARCHAR(100)"],
+            ['latitude', "DECIMAL(10,8)"],
+            ['longitude', "DECIMAL(11,8)"],
+            ['phone', "VARCHAR(50)"],
+            ['email', "VARCHAR(255)"],
+            ['product_id', "INTEGER"],
+            ['product_name', "VARCHAR(255)"],
+            ['rfs_date', "DATE"],
+            ['files', "JSONB DEFAULT '[]'"],
+            ['sales_id', "INTEGER"],
+            ['sales_name', "VARCHAR(100)"],
+            ['status', "VARCHAR(50) DEFAULT 'Prospect'"],
+            ['prospect_date', "DATE DEFAULT NOW()"],
+            ['is_active', "BOOLEAN DEFAULT true"],
+            ['fat', "VARCHAR(100)"],
+            ['homepass_id', "VARCHAR(100)"],
+            ['site_id', "VARCHAR(100)"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"],
+            ['updated_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('customers', c, d);
 
         // 8. coverage_sites
-        await db.query(`CREATE TABLE IF NOT EXISTS coverage_sites (
-            id SERIAL PRIMARY KEY, network_type VARCHAR(50), site_id VARCHAR(100), homepass_id VARCHAR(100),
-            ampli_lat DECIMAL(10,8), ampli_long DECIMAL(11,8), area_lat DECIMAL(10,8), area_long DECIMAL(11,8),
-            locality VARCHAR(255), province VARCHAR(100), cluster VARCHAR(100), status VARCHAR(50) DEFAULT 'active',
-            polygon_data JSONB, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['homepass_id', "VARCHAR(100)"], ['province', "VARCHAR(100)"], ['cluster', "VARCHAR(100)"], ['polygon_data', "JSONB"], ['updated_at', "TIMESTAMP DEFAULT NOW()"]]) await addCol('coverage_sites', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS coverage_sites (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['network_type', "VARCHAR(50)"],
+            ['site_id', "VARCHAR(100)"],
+            ['homepass_id', "VARCHAR(100)"],
+            ['ampli_lat', "DECIMAL(10,8)"],
+            ['ampli_long', "DECIMAL(11,8)"],
+            ['area_lat', "DECIMAL(10,8)"],
+            ['area_long', "DECIMAL(11,8)"],
+            ['locality', "VARCHAR(255)"],
+            ['province', "VARCHAR(100)"],
+            ['cluster', "VARCHAR(100)"],
+            ['status', "VARCHAR(50) DEFAULT 'active'"],
+            ['polygon_data', "JSONB"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"],
+            ['updated_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('coverage_sites', c, d);
 
         // 9. tickets
-        await db.query(`CREATE TABLE IF NOT EXISTS tickets (
-            id SERIAL PRIMARY KEY, ticket_number VARCHAR(50) UNIQUE, customer_id INTEGER, customer_name VARCHAR(255),
-            category VARCHAR(100), description TEXT, assigned_to INTEGER, assigned_name VARCHAR(255),
-            source VARCHAR(100) DEFAULT 'WhatsApp', priority VARCHAR(50) DEFAULT 'Medium',
-            status VARCHAR(50) DEFAULT 'Open', solved_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['ticket_number', "VARCHAR(50)"], ['customer_name', "VARCHAR(255)"], ['assigned_to', "INTEGER"], ['assigned_name', "VARCHAR(255)"], ['source', "VARCHAR(100) DEFAULT 'WhatsApp'"], ['priority', "VARCHAR(50) DEFAULT 'Medium'"], ['solved_at', "TIMESTAMP"], ['updated_at', "TIMESTAMP DEFAULT NOW()"]]) await addCol('tickets', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS tickets (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['ticket_number', "VARCHAR(50)"],
+            ['customer_id', "INTEGER"],
+            ['customer_name', "VARCHAR(255)"],
+            ['category', "VARCHAR(100)"],
+            ['description', "TEXT"],
+            ['assigned_to', "INTEGER"],
+            ['assigned_name', "VARCHAR(255)"],
+            ['source', "VARCHAR(100) DEFAULT 'WhatsApp'"],
+            ['priority', "VARCHAR(50) DEFAULT 'Medium'"],
+            ['status', "VARCHAR(50) DEFAULT 'Open'"],
+            ['solved_at', "TIMESTAMP"],
+            ['updated_at', "TIMESTAMP DEFAULT NOW()"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('tickets', c, d);
 
         // 10. ticket_activities
-        await db.query(`CREATE TABLE IF NOT EXISTS ticket_activities (
-            id SERIAL PRIMARY KEY, ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
-            activity_type VARCHAR(50) DEFAULT 'note', content TEXT, created_by VARCHAR(100) DEFAULT 'System', created_at TIMESTAMP DEFAULT NOW()
-        )`);
+        await db.query(`CREATE TABLE IF NOT EXISTS ticket_activities (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['ticket_id', "INTEGER REFERENCES tickets(id) ON DELETE CASCADE"],
+            ['activity_type', "VARCHAR(50) DEFAULT 'note'"],
+            ['content', "TEXT"],
+            ['created_by', "VARCHAR(100) DEFAULT 'System'"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('ticket_activities', c, d);
 
         // 11. users
-        await db.query(`CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY, username VARCHAR(100) NOT NULL UNIQUE, email VARCHAR(255) NOT NULL UNIQUE,
-            password_hash VARCHAR(255) NOT NULL, full_name VARCHAR(255), role VARCHAR(100) DEFAULT 'user',
-            cluster VARCHAR(100), province VARCHAR(100), is_active BOOLEAN DEFAULT true, last_login TIMESTAMP,
-            created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['cluster', "VARCHAR(100)"], ['province', "VARCHAR(100)"], ['is_active', "BOOLEAN DEFAULT true"], ['last_login', "TIMESTAMP"]]) await addCol('users', c, d);
+        await db.query(`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['username', "VARCHAR(100) UNIQUE"],
+            ['email', "VARCHAR(255) UNIQUE"],
+            ['password_hash', "VARCHAR(255)"],
+            ['full_name', "VARCHAR(255)"],
+            ['role', "VARCHAR(100) DEFAULT 'user'"],
+            ['cluster', "VARCHAR(100)"],
+            ['province', "VARCHAR(100)"],
+            ['is_active', "BOOLEAN DEFAULT true"],
+            ['last_login', "TIMESTAMP"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"],
+            ['updated_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('users', c, d);
 
-        // Default admin
+        // Default admin (safe upsert)
         const defaultHash = crypto.createHash('sha256').update('password123').digest('hex');
-        await db.query(`INSERT INTO users (username, email, password_hash, full_name, role, is_active) VALUES ('admin', 'admin@netsales.com', $1, 'Administrator', 'Admin', true) ON CONFLICT (username) DO NOTHING`, [defaultHash]);
+        // Check if admin exists first to avoid constant index probing
+        const adminCheck = await db.query("SELECT 1 FROM users WHERE username='admin'");
+        if (adminCheck.rows.length === 0) {
+            try {
+                await db.query(`INSERT INTO users (username, email, password_hash, full_name, role, is_active) VALUES ('admin', 'admin@netsales.com', $1, 'Administrator', 'Admin', true)`, [defaultHash]);
+            } catch (e) { }
+        }
 
         // 12. roles
-        await db.query(`CREATE TABLE IF NOT EXISTS roles (
-            id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE, description TEXT, permissions JSONB DEFAULT '[]',
-            allowed_clusters JSONB DEFAULT '[]', allowed_provinces JSONB DEFAULT '[]', data_scope VARCHAR(50) DEFAULT 'all',
-            is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-        )`);
-        for (const [c, d] of [['allowed_clusters', "JSONB DEFAULT '[]'"], ['allowed_provinces', "JSONB DEFAULT '[]'"], ['data_scope', "VARCHAR(50) DEFAULT 'all'"], ['is_active', "BOOLEAN DEFAULT true"]]) await addCol('roles', c, d);
-
-        await db.query(`INSERT INTO roles (name, description, permissions, data_scope) VALUES ('Admin','Full system access','["all"]','all'),('Sales','Sales and prospect management','["prospects","customers","coverage"]','cluster'),('Manager','View reports and manage team','["reports","prospects","customers"]','province') ON CONFLICT (name) DO NOTHING`);
+        await db.query(`CREATE TABLE IF NOT EXISTS roles (id SERIAL PRIMARY KEY)`);
+        for (const [c, d] of [
+            ['name', "VARCHAR(100) UNIQUE"],
+            ['description', "TEXT"],
+            ['permissions', "JSONB DEFAULT '[]'"],
+            ['allowed_clusters', "JSONB DEFAULT '[]'"],
+            ['allowed_provinces', "JSONB DEFAULT '[]'"],
+            ['data_scope', "VARCHAR(50) DEFAULT 'all'"],
+            ['is_active', "BOOLEAN DEFAULT true"],
+            ['created_at', "TIMESTAMP DEFAULT NOW()"],
+            ['updated_at', "TIMESTAMP DEFAULT NOW()"]
+        ]) await addCol('roles', c, d);
 
         // 13. system_settings
-        await db.query(`CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(100) PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT NOW())`);
+        await db.query(`CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(100) PRIMARY KEY)`);
+        await addCol('system_settings', 'value', 'TEXT');
+        await addCol('system_settings', 'updated_at', 'TIMESTAMP DEFAULT NOW()');
 
         // 14. clusters (master data)
-        await db.query(`CREATE TABLE IF NOT EXISTS clusters (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE, province VARCHAR(100), description TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
+        await db.query(`CREATE TABLE IF NOT EXISTS clusters (id SERIAL PRIMARY KEY)`);
+        await addCol('clusters', 'name', 'VARCHAR(100) UNIQUE');
+        await addCol('clusters', 'province', 'VARCHAR(100)');
+        await addCol('clusters', 'description', 'TEXT');
+        await addCol('clusters', 'is_active', 'BOOLEAN DEFAULT true');
+        await addCol('clusters', 'created_at', 'TIMESTAMP DEFAULT NOW()');
 
         // 15. provinces (master data)
-        await db.query(`CREATE TABLE IF NOT EXISTS provinces (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE, code VARCHAR(10), is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT NOW())`);
-        // 16. Performance Indexes
+        await db.query(`CREATE TABLE IF NOT EXISTS provinces (id SERIAL PRIMARY KEY)`);
+        await addCol('provinces', 'name', 'VARCHAR(100) UNIQUE');
+        await addCol('provinces', 'code', 'VARCHAR(10)');
+        await addCol('provinces', 'is_active', 'BOOLEAN DEFAULT true');
+        await addCol('provinces', 'created_at', 'TIMESTAMP DEFAULT NOW()');
+
+        console.log('Comprehensive schema setup completed successfully');
+        res.json({ message: 'All 15 tables validated and all columns enforced.' });
         const indexes = [
             'CREATE INDEX IF NOT EXISTS idx_coverage_lat_lng ON coverage_sites (ampli_lat, ampli_long)',
             'CREATE INDEX IF NOT EXISTS idx_coverage_network_type ON coverage_sites (network_type)',

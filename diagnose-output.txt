@@ -1,0 +1,46 @@
+﻿[dotenv@17.2.3] injecting env (3) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+=== DATABASE SCHEMA DIAGNOSIS ===
+
+Ô£à target_clusters (4 cols): id, name, total_target, created_at
+Ô£à target_cities (7 cols): id, cluster_id, city_name, province, homepass, percentage, target
+Ô£à products (10 cols): id, name, category, service_type, price, cogs, bandwidth, release_date, status, created_at
+Ô£à promos (9 cols): id, name, valid_from, valid_to, price, cogs, description, status, created_at
+Ô£à hot_news (10 cols): id, title, content, priority, start_date, end_date, is_active, created_by, created_at, updated_at
+Ô£à customers (26 cols): id, customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan, latitude, longitude, phone, email, product_id, product_name, rfs_date, files, sales_id, sales_name, status, prospect_date, created_at, is_active, fat, homepass_id, site_id
+Ô£à person_in_charge (13 cols): id, name, role, employee_id, email, phone, area, position, status, active_date, inactive_date, profile_image, created_at
+Ô£à coverage_sites (13 cols): id, network_type, site_id, ampli_lat, ampli_long, locality, status, created_at, polygon_data, homepass_id, province, cluster, updated_at
+Ô£à tickets (14 cols): id, ticket_number, customer_id, customer_name, category, description, source, priority, status, assigned_to, assigned_name, created_at, updated_at, solved_at
+Ô£à ticket_activities (6 cols): id, ticket_id, activity_type, content, created_by, created_at
+Ô£à users (47 cols): instance_id, id, id, username, email, aud, role, password_hash, full_name, email, encrypted_password, role, cluster, email_confirmed_at, province, invited_at, confirmation_token, is_active, confirmation_sent_at, last_login, created_at, recovery_token, recovery_sent_at, updated_at, email_change_token_new, email_change, email_change_sent_at, last_sign_in_at, raw_app_meta_data, raw_user_meta_data, is_super_admin, created_at, updated_at, phone, phone_confirmed_at, phone_change, phone_change_token, phone_change_sent_at, confirmed_at, email_change_token_current, email_change_confirm_status, banned_until, reauthentication_token, reauthentication_sent_at, is_sso_user, deleted_at, is_anonymous
+Ô£à roles (10 cols): id, name, description, permissions, allowed_clusters, allowed_provinces, data_scope, is_active, created_at, updated_at
+Ô£à system_settings (3 cols): key, value, updated_at
+Ô£à clusters (6 cols): id, name, province, description, is_active, created_at
+Ô£à provinces (5 cols): id, name, code, is_active, created_at
+
+=== CRITICAL COLUMN CHECKS ===
+
+Ô£à target_clusters.name - OK
+Ô£à target_clusters.total_target - OK
+Ô£à target_cities.target - OK
+Ô£à target_cities.cluster_id - OK
+Ô£à target_cities.city_name - OK
+Ô£à target_cities.province - OK
+Ô£à target_cities.homepass - OK
+Ô£à target_cities.percentage - OK
+Ô£à hot_news.priority - OK
+Ô£à hot_news.start_date - OK
+Ô£à hot_news.end_date - OK
+Ô£à hot_news.is_active - OK
+Ô£à hot_news.created_by - OK
+Ô£à customers.customer_id - OK
+Ô£à customers.type - OK
+Ô£à customers.is_active - OK
+Ô£à products.cogs - OK
+Ô£à products.bandwidth - OK
+Ô£à products.release_date - OK
+Ô£à promos.valid_from - OK
+Ô£à promos.valid_to - OK
+Ô£à promos.cogs - OK
+Ô£à coverage_sites.ampli_lat - OK
+Ô£à coverage_sites.ampli_long - OK
+Ô£à coverage_sites.network_type - OK
