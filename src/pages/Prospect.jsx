@@ -638,54 +638,31 @@ const Prospect = () => {
 
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Cluster/Area</label>
+                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Province (Area)</label>
                                 <Select
-                                    options={clusters.map(c => ({ value: c.name, label: c.name }))}
-                                    value={formData.area}
-                                    onChange={(e) => {
-                                        const c = clusters.find(cl => cl.name === e.target.value);
-                                        // Update Area
-                                        const updates = { area: e.target.value, province: '', kabupaten: '' };
-
-                                        // Auto-select Province if only one
-                                        if (c && c.provinces && c.provinces.length === 1) {
-                                            updates.province = c.provinces[0];
-                                            // Filter cities immediately
-                                            const citiesInProv = c.cities.filter(city => city.province === updates.province);
-                                            setFilteredCities(citiesInProv);
-                                        } else if (c) {
-                                            // If multiple provinces, just show all cities or wait for province selection?
-                                            // Better to wait for province selection if we want strict hierarchy. 
-                                            // But for UX, let's show all cities if no province selected OR allow filtering.
-                                            // Let's reset cities if province is required.
-                                            // User asked: "sehingga kolom kota... mengikuti sesuai provinsinya"
-                                            setFilteredCities([]);
-                                        }
-
-                                        setFormData(prev => ({ ...prev, ...updates }));
-
-                                        // Update available provinces for this cluster
-                                        if (c) setAvailableProvinces(c.provinces || []);
-                                    }}
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Province</label>
-                                <Select
-                                    options={availableProvinces.map(p => ({ value: p, label: p }))}
+                                    options={Array.from(new Set(clusters.flatMap(c => c.provinces || []))).sort().map(p => ({ value: p, label: p }))}
                                     value={formData.province || ''}
                                     onChange={(e) => {
                                         const prov = e.target.value;
-                                        setFormData(prev => ({ ...prev, province: prov, kabupaten: '' }));
+                                        // Find Cluster containing this province
+                                        const relatedCluster = clusters.find(c => c.provinces && c.provinces.includes(prov));
 
-                                        // Filter cities by Cluster AND Province
-                                        const c = clusters.find(cl => cl.name === formData.area);
-                                        if (c) {
-                                            const citiesInProv = c.cities.filter(city => city.province === prov);
+                                        const updates = {
+                                            province: prov,
+                                            area: relatedCluster ? relatedCluster.name : '', // Auto-set Cluster
+                                            kabupaten: ''
+                                        };
+
+                                        setFormData(prev => ({ ...prev, ...updates }));
+
+                                        // Filter cities by this province (from the related cluster)
+                                        if (relatedCluster) {
+                                            const citiesInProv = relatedCluster.cities.filter(city => city.province === prov);
                                             setFilteredCities(citiesInProv);
+                                        } else {
+                                            setFilteredCities([]);
                                         }
                                     }}
-                                    disabled={!formData.area}
                                 />
                             </div>
                             <div>
@@ -694,7 +671,7 @@ const Prospect = () => {
                                     options={filteredCities.map(c => ({ value: c.name, label: c.name }))}
                                     value={formData.kabupaten}
                                     onChange={e => setFormData({ ...formData, kabupaten: e.target.value })}
-                                    disabled={!formData.province && availableProvinces.length > 0}
+                                    disabled={!formData.province}
                                 />
                             </div>
                         </div>
