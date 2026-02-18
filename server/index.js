@@ -28,27 +28,8 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Temporary: DB Info (shows which database is connected)
-app.get('/api/db-info', async (req, res) => {
-    try {
-        const countResult = await db.query('SELECT COUNT(*) FROM coverage_sites');
-        const dbUrl = process.env.DATABASE_URL || '';
-        // Only show host part, not credentials
-        let dbHost = 'unknown';
-        try {
-            const url = new URL(dbUrl);
-            dbHost = url.hostname;
-        } catch (e) { }
-        res.json({
-            coverage_count: parseInt(countResult.rows[0].count),
-            db_host: dbHost,
-            is_supabase: dbHost.includes('supabase'),
-            is_neon: dbHost.includes('neon')
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// Temporary endpoint removed
+
 
 // Setup Schema Route - COMPREHENSIVE for all tables
 app.get('/api/setup-schema', async (req, res) => {
