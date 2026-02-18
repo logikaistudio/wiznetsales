@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
-import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { Map as MapIcon, Search, Navigation, Info, Loader2, CheckCircle, XCircle, Plus, Settings } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Button from '../components/ui/Button';
 import 'leaflet/dist/leaflet.css';
 import useDebounce from '../hooks/useDebounce';
+import { useAuth } from '../context/AuthContext';
 
 // Fix Leaflet Icons
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -24,12 +25,13 @@ const createNodeIcon = (networkType, settings) => {
 
     const nodeColor = isFTTH ? (settings.ftthNodeColor || '#2563eb') : (settings.hfcNodeColor || '#ea580c');
     const borderRadius = '50%'; // Always round
+    const size = parseInt(settings.nodeSize) || 12;
 
     return divIcon({
         className: 'custom-node-marker',
-        html: `<div style="background-color:${nodeColor};width:12px;height:12px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6]
+        html: `<div style="background-color:${nodeColor};width:${size}px;height:${size}px;border-radius:${borderRadius};border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.4);"></div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
     });
 };
 
@@ -104,6 +106,10 @@ const MapEvents = ({ onMapClick, isPicking, onBoundsChange }) => {
 
 const Coverage = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const canEditSettings = user && ['super_admin', 'admin', 'manager', 'superadmin'].includes(user.role);
+    const [showSettings, setShowSettings] = useState(false);
+
     const [coveragePoints, setCoveragePoints] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [analyzedCustomers, setAnalyzedCustomers] = useState([]);
@@ -148,7 +154,8 @@ const Coverage = () => {
                     hfcRadiusColor: data.hfcRadiusColor || '#eab308',
                     ftthRadius: parseInt(data.ftthRadius) || 50,
                     hfcRadius: parseInt(data.hfcRadius) || 50,
-                    coverageOpacity: parseFloat(data.coverageOpacity) || 0.3
+                    coverageOpacity: parseFloat(data.coverageOpacity) || 0.3,
+                    nodeSize: parseInt(data.nodeSize) || 12
                 });
             } catch (err) {
                 console.error('Failed to load settings', err);
@@ -306,6 +313,20 @@ const Coverage = () => {
         setShowInputForm(false);
     };
 
+    const handleSaveSettings = async () => {
+        try {
+            await fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+            setShowSettings(false);
+            alert('Map settings saved!');
+        } catch (e) {
+            alert('Failed to save settings');
+        }
+    };
+
     const mapCenter = useMemo(() => {
         if (manualCheckPoint) return [manualCheckPoint.lat, manualCheckPoint.lng];
         if (analyzedCustomers.length > 0) return [analyzedCustomers[0].lat, analyzedCustomers[0].lng];
@@ -316,13 +337,91 @@ const Coverage = () => {
     return (
         <div className="h-[calc(100vh-64px)] flex flex-col relative">
             {/* Header Overlay */}
-            <div className="absolute top-4 left-4 z-[400] bg-white p-4 rounded-xl shadow-lg border border-gray-100 max-w-sm w-full">
-                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    <MapIcon className="w-5 h-5 text-primary" /> Coverage Check
-                </h1>
-                <p className="text-xs text-gray-500 mb-3">
-                    Visualizing customer locations (FTTH: {settings.ftthRadius}m, HFC: {settings.hfcRadius}m radius).
-                </p>
+            <div className="absolute top-4 left-4 z-[400] bg-white p-4 rounded-xl shadow-lg border border-gray-100 max-w-sm w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-start mb-3">
+                    <div>
+                        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <MapIcon className="w-5 h-5 text-primary" /> Coverage Check
+                        </h1>
+                        <p className="text-xs text-gray-500">
+                            Visualizing FTTH ({settings.ftthRadius}m) & HFC ({settings.hfcRadius}m).
+                        </p>
+                    </div>
+                    {canEditSettings && (
+                        <Button variant="ghost" size="icon" onClick={() => setShowSettings(!showSettings)} className={cn("h-8 w-8", showSettings && "bg-blue-50 text-blue-600")}>
+                            <Settings className="w-4 h-4" />
+                        </Button>
+                    )}
+                </div>
+
+                {/* Settings Panel */}
+                {showSettings && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-blue-100 space-y-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="flex justify-between items-center border-b border-blue-200 pb-1 mb-2">
+                            <h3 className="text-xs font-bold text-blue-800 uppercase">Map Visualization</h3>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
+                                    <span>Node Size</span> <span>{settings.nodeSize || 12}px</span>
+                                </label>
+                                <input
+                                    type="range" min="4" max="24" step="1"
+                                    value={settings.nodeSize || 12}
+                                    onChange={e => setSettings({ ...settings, nodeSize: parseInt(e.target.value) })}
+                                    className="w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
+                                    <span>Coverage Opacity</span> <span>{settings.coverageOpacity || 0.3}</span>
+                                </label>
+                                <input
+                                    type="range" min="0.1" max="1.0" step="0.1"
+                                    value={settings.coverageOpacity || 0.3}
+                                    onChange={e => setSettings({ ...settings, coverageOpacity: parseFloat(e.target.value) })}
+                                    className="w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="space-y-1">
+                                <p className="font-bold text-blue-700 text-[10px] border-b border-blue-100 pb-1">FTTH</p>
+                                <div className="flex items-center justify-between">
+                                    <span>Radius (m)</span>
+                                    <input type="number" className="w-10 p-0.5 border rounded text-[10px] text-center" value={settings.ftthRadius} onChange={e => setSettings({ ...settings, ftthRadius: parseInt(e.target.value) })} />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Node</span>
+                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.ftthNodeColor} onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value })} />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Cover</span>
+                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.ftthRadiusColor} onChange={e => setSettings({ ...settings, ftthRadiusColor: e.target.value })} />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="font-bold text-orange-700 text-[10px] border-b border-orange-100 pb-1">HFC</p>
+                                <div className="flex items-center justify-between">
+                                    <span>Radius (m)</span>
+                                    <input type="number" className="w-10 p-0.5 border rounded text-[10px] text-center" value={settings.hfcRadius} onChange={e => setSettings({ ...settings, hfcRadius: parseInt(e.target.value) })} />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Node</span>
+                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.hfcNodeColor} onChange={e => setSettings({ ...settings, hfcNodeColor: e.target.value })} />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Cover</span>
+                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.hfcRadiusColor} onChange={e => setSettings({ ...settings, hfcRadiusColor: e.target.value })} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <Button size="sm" onClick={handleSaveSettings} className="w-full text-xs h-7 mt-2">Save Settings</Button>
+                    </div>
+                )}
 
                 {/* Manual Check Tools */}
                 <div className="mt-3 space-y-2 border-t pt-3 border-gray-100">
