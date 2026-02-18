@@ -1,0 +1,22 @@
+﻿[dotenv@17.2.3] injecting env (3) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+=== PERBANDINGAN DATA: NeonDB vs Supabase ===
+
+Table                  | NeonDB | Supabase | Status
+------------------------------------------------------------
+coverage_sites         | 194525 | 194526   | Ô£à OK
+person_in_charge       | 3      | 3        | Ô£à SAMA
+products               | 9      | 9        | Ô£à SAMA
+promos                 | 0      | 0        | Ô£à SAMA
+target_clusters        | 3      | 3        | Ô£à SAMA
+target_cities          | 16     | 16       | Ô£à SAMA
+customers              | 0      | 0        | Ô£à SAMA
+hot_news               | 4      | 4        | Ô£à SAMA
+tickets                | 0      | 0        | Ô£à SAMA
+ticket_activities      | 0      | 0        | Ô£à SAMA
+users                  | 3      | 3        | Ô£à SAMA
+system_settings        | 6      | 12       | Ô£à OK
+------------------------------------------------------------
+TOTAL                  | 194569 | 194576   |
+
+
+Ô£à Data sudah sinkron!

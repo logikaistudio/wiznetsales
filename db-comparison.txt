@@ -1,0 +1,23 @@
+﻿[dotenv@17.2.3] injecting env (3) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+=== PERBANDINGAN DATA: NeonDB vs Supabase ===
+
+Table                  | NeonDB | Supabase | Status
+------------------------------------------------------------
+coverage_sites         | 194525 | 2809     | ­ƒƒí Kurang data
+person_in_charge       | 3      | 3        | Ô£à SAMA
+products               | 9      | 9        | Ô£à SAMA
+promos                 | 0      | 0        | Ô£à SAMA
+target_clusters        | 3      | 3        | Ô£à SAMA
+target_cities          | 16     | 16       | Ô£à SAMA
+customers              | 0      | 0        | Ô£à SAMA
+hot_news               | 4      | 4        | Ô£à SAMA
+tickets                | 0      | 0        | Ô£à SAMA
+ticket_activities      | 0      | 0        | Ô£à SAMA
+users                  | 3      | 3        | Ô£à SAMA
+system_settings        | 6      | 12       | Ô£à OK
+------------------------------------------------------------
+TOTAL                  | 194569 | 2859     |
+
+
+ÔÜá´©Å  Ada 191710 baris data di NeonDB yang BELUM ada di Supabase!
+­ƒæë Jalankan: node migrate-neon-to-supabase.js
