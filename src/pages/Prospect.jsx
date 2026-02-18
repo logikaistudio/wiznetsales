@@ -253,10 +253,17 @@ const Prospect = () => {
         try {
             const url = selectedId ? `/api/customers/${selectedId}` : '/api/customers';
             const method = selectedId ? 'PUT' : 'POST';
+            // Sanitize Data
+            const payload = { ...formData };
+            if (payload.latitude === '') payload.latitude = null;
+            if (payload.longitude === '') payload.longitude = null;
+            if (payload.productId === '') payload.productId = null;
+            if (payload.salesId === '') payload.salesId = null;
+
             const response = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -419,6 +426,7 @@ const Prospect = () => {
 
     const [clusters, setClusters] = useState([]);
     const [filteredCities, setFilteredCities] = useState([]);
+    const [availableProvinces, setAvailableProvinces] = useState([]);
 
     const fetchAuxData = async () => {
         try {
@@ -432,6 +440,8 @@ const Prospect = () => {
 
     const { user } = useAuth();
     const canManageData = user && (user.role === 'admin' || user.role === 'leader' || user.role === 'manager');
+
+    // ... (rest of component render)
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -634,9 +644,48 @@ const Prospect = () => {
                                     value={formData.area}
                                     onChange={(e) => {
                                         const c = clusters.find(cl => cl.name === e.target.value);
-                                        setFormData({ ...formData, area: e.target.value });
-                                        if (c) setFilteredCities(c.cities);
+                                        // Update Area
+                                        const updates = { area: e.target.value, province: '', kabupaten: '' };
+
+                                        // Auto-select Province if only one
+                                        if (c && c.provinces && c.provinces.length === 1) {
+                                            updates.province = c.provinces[0];
+                                            // Filter cities immediately
+                                            const citiesInProv = c.cities.filter(city => city.province === updates.province);
+                                            setFilteredCities(citiesInProv);
+                                        } else if (c) {
+                                            // If multiple provinces, just show all cities or wait for province selection?
+                                            // Better to wait for province selection if we want strict hierarchy. 
+                                            // But for UX, let's show all cities if no province selected OR allow filtering.
+                                            // Let's reset cities if province is required.
+                                            // User asked: "sehingga kolom kota... mengikuti sesuai provinsinya"
+                                            setFilteredCities([]);
+                                        }
+
+                                        setFormData(prev => ({ ...prev, ...updates }));
+
+                                        // Update available provinces for this cluster
+                                        if (c) setAvailableProvinces(c.provinces || []);
                                     }}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Province</label>
+                                <Select
+                                    options={availableProvinces.map(p => ({ value: p, label: p }))}
+                                    value={formData.province || ''}
+                                    onChange={(e) => {
+                                        const prov = e.target.value;
+                                        setFormData(prev => ({ ...prev, province: prov, kabupaten: '' }));
+
+                                        // Filter cities by Cluster AND Province
+                                        const c = clusters.find(cl => cl.name === formData.area);
+                                        if (c) {
+                                            const citiesInProv = c.cities.filter(city => city.province === prov);
+                                            setFilteredCities(citiesInProv);
+                                        }
+                                    }}
+                                    disabled={!formData.area}
                                 />
                             </div>
                             <div>
@@ -645,6 +694,7 @@ const Prospect = () => {
                                     options={filteredCities.map(c => ({ value: c.name, label: c.name }))}
                                     value={formData.kabupaten}
                                     onChange={e => setFormData({ ...formData, kabupaten: e.target.value })}
+                                    disabled={!formData.province && availableProvinces.length > 0}
                                 />
                             </div>
                         </div>
@@ -709,11 +759,11 @@ const Prospect = () => {
                             {isSaving ? 'Saving...' : 'Save Data'}
                         </Button>
                     </div>
-                </form>
-            </Modal>
+                </form >
+            </Modal >
 
             {/* Import Preview Modal */}
-            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Prospects">
+            < Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Import Prospects" >
                 <div className="space-y-4">
                     {/* Import Mode Selector */}
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -788,8 +838,8 @@ const Prospect = () => {
                         </Button>
                     </div>
                 </div>
-            </Modal>
-        </div>
+            </Modal >
+        </div >
     );
 };
 
