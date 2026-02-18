@@ -1,0 +1,23 @@
+﻿[dotenv@17.2.3] injecting env (3) from .env -- tip: ­ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+COUNT(*) langsung: 194526
+
+Sample row dari query API:
+{
+  id: 194526,
+  network_type: '12LBP00018_000',
+  site_id: 'FHM297S02A12',
+  homepass_id: null,
+  ampli_lat: '3.58912100',
+  ampli_long: '98.59873200',
+  area_lat: null,
+  area_long: null,
+  locality: 'GANG MASJID',
+  province: null,
+  cluster: null,
+  status: 'Active',
+  created_at: 2026-02-08T23:31:53.011Z
+}
+
+RLS status: { tablename: 'coverage_sites', rowsecurity: false }
+
+Policies: Tidak ada policy

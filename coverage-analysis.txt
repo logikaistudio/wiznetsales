@@ -1,0 +1,19 @@
+﻿[dotenv@17.2.3] injecting env (3) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Total semua: 194526
+Yang punya koordinat: 194526
+Yang TIDAK punya koordinat: 0
+
+Breakdown per status:
+  Active: 194526
+
+Top 10 network_type:
+  HYBRID: 123236
+  FTTH: 66746
+  HFC: 284
+  12LBP00107_000: 65
+  12LBP00022_000: 54
+  12LBP00089_000: 47
+  12LBP00001_000: 46
+  12LBP00021_000: 44
+  12LBP00028_000: 43
+  12LBP00136_000: 37
