@@ -4,8 +4,10 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Modal from '../../components/ui/Modal';
 import { cn } from '../../lib/utils';
+import { useAuth } from '../../context/AuthContext';
 
 const HotNews = () => {
+    const { user } = useAuth();
     const [newsList, setNewsList] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -18,7 +20,7 @@ const HotNews = () => {
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         isActive: true,
-        createdBy: 'Admin'
+        createdBy: null
     });
 
     const fetchNews = async () => {
@@ -48,7 +50,7 @@ const HotNews = () => {
                 startDate: item.startDate ? new Date(item.startDate).toISOString().split('T')[0] : '',
                 endDate: item.endDate ? new Date(item.endDate).toISOString().split('T')[0] : '',
                 isActive: item.isActive,
-                createdBy: item.createdBy || 'Admin'
+                createdBy: item.createdBy || user?.id || null
             });
         } else {
             setEditingItem(null);
@@ -59,7 +61,7 @@ const HotNews = () => {
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 isActive: true,
-                createdBy: 'Admin'
+                createdBy: user?.id || null
             });
         }
         setIsModalOpen(true);

@@ -1406,7 +1406,7 @@ app.post('/api/hotnews', async (req, res) => {
         const result = await db.query(
             `INSERT INTO hot_news (title, content, priority, start_date, end_date, is_active, created_by)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-            [title, content, priority || 1, startDate, endDate, isActive !== false, createdBy || 'Admin']
+            [title, content, priority || 1, startDate, endDate, isActive !== false, createdBy || null]
         );
         res.json({ message: 'Hot news created', id: result.rows[0].id });
     } catch (err) {
