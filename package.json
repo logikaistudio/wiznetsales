@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tmcw/togeojson": "^7.1.2",
+    "axios": "^1.13.5",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",

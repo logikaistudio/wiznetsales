@@ -1363,13 +1363,14 @@ app.get('/api/hotnews', async (req, res) => {
             WHERE is_active = true 
             AND start_date <= NOW() 
             AND end_date >= NOW()
-            ORDER BY priority DESC, created_at DESC
+            ORDER BY dashboard_order ASC, priority DESC, created_at DESC
         `);
         res.json(result.rows.map(row => ({
             id: row.id,
             title: row.title,
             content: row.content,
             priority: row.priority,
+            dashboardOrder: row.dashboard_order || 1,
             startDate: row.start_date,
             endDate: row.end_date,
             isActive: row.is_active,
@@ -1383,12 +1384,13 @@ app.get('/api/hotnews', async (req, res) => {
 
 app.get('/api/hotnews/all', async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM hot_news ORDER BY created_at DESC');
+        const result = await db.query('SELECT * FROM hot_news ORDER BY dashboard_order ASC, created_at DESC');
         res.json(result.rows.map(row => ({
             id: row.id,
             title: row.title,
             content: row.content,
             priority: row.priority,
+            dashboardOrder: row.dashboard_order || 1,
             startDate: row.start_date,
             endDate: row.end_date,
             isActive: row.is_active,
@@ -1402,11 +1404,11 @@ app.get('/api/hotnews/all', async (req, res) => {
 
 app.post('/api/hotnews', async (req, res) => {
     try {
-        const { title, content, priority, startDate, endDate, isActive, createdBy } = req.body;
+        const { title, content, priority, dashboardOrder, startDate, endDate, isActive, createdBy } = req.body;
         const result = await db.query(
-            `INSERT INTO hot_news (title, content, priority, start_date, end_date, is_active, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-            [title, content, priority || 1, startDate, endDate, isActive !== false, createdBy || null]
+            `INSERT INTO hot_news (title, content, priority, dashboard_order, start_date, end_date, is_active, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+            [title, content, priority || 1, dashboardOrder || 1, startDate, endDate, isActive !== false, createdBy || null]
         );
         res.json({ message: 'Hot news created', id: result.rows[0].id });
     } catch (err) {
@@ -1420,11 +1422,11 @@ app.post('/api/hotnews', async (req, res) => {
 app.put('/api/hotnews/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, content, priority, startDate, endDate, isActive } = req.body;
+        const { title, content, priority, dashboardOrder, startDate, endDate, isActive } = req.body;
         await db.query(
-            `UPDATE hot_news SET title=$1, content=$2, priority=$3, start_date=$4, end_date=$5, is_active=$6, updated_at=NOW()
-             WHERE id=$7`,
-            [title, content, priority, startDate, endDate, isActive, id]
+            `UPDATE hot_news SET title=$1, content=$2, priority=$3, dashboard_order=$4, start_date=$5, end_date=$6, is_active=$7, updated_at=NOW()
+             WHERE id=$8`,
+            [title, content, priority, dashboardOrder || 1, startDate, endDate, isActive, id]
         );
         res.json({ message: 'Hot news updated' });
     } catch (err) {

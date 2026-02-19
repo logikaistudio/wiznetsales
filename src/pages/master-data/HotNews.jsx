@@ -17,6 +17,7 @@ const HotNews = () => {
         title: '',
         content: '',
         priority: 1,
+        dashboardOrder: 1,
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         isActive: true,
@@ -47,6 +48,7 @@ const HotNews = () => {
                 title: item.title,
                 content: item.content,
                 priority: item.priority,
+                dashboardOrder: item.dashboardOrder || 1,
                 startDate: item.startDate ? new Date(item.startDate).toISOString().split('T')[0] : '',
                 endDate: item.endDate ? new Date(item.endDate).toISOString().split('T')[0] : '',
                 isActive: item.isActive,
@@ -58,6 +60,7 @@ const HotNews = () => {
                 title: '',
                 content: '',
                 priority: 1,
+                dashboardOrder: 1,
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 isActive: true,
@@ -130,6 +133,7 @@ const HotNews = () => {
                             <tr>
                                 <th className="px-6 py-4">Title</th>
                                 <th className="px-6 py-4">Priority</th>
+                                <th className="px-6 py-4">Order</th>
                                 <th className="px-6 py-4">Start Date</th>
                                 <th className="px-6 py-4">End Date</th>
                                 <th className="px-6 py-4">Status</th>
@@ -154,6 +158,9 @@ const HotNews = () => {
                                         )}>
                                             Priority {item.priority}
                                         </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className="font-medium text-gray-700">#{item.dashboardOrder || '-'}</span>
                                     </td>
                                     <td className="px-6 py-4 text-gray-600">
                                         {new Date(item.startDate).toLocaleDateString()}
@@ -228,17 +235,27 @@ const HotNews = () => {
                             </select>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">Status</label>
-                            <select
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                value={formData.isActive ? 'true' : 'false'}
-                                onChange={e => setFormData({ ...formData, isActive: e.target.value === 'true' })}
-                            >
-                                <option value="true">Active</option>
-                                <option value="false">Inactive</option>
-                            </select>
-                        </div>
+                        <Input
+                            label="Dashboard Order"
+                            type="number"
+                            min="1"
+                            value={formData.dashboardOrder}
+                            onChange={e => setFormData({ ...formData, dashboardOrder: parseInt(e.target.value) })}
+                            required
+                            placeholder="Display order (1 = top)"
+                        />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-gray-700">Status</label>
+                        <select
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            value={formData.isActive ? 'true' : 'false'}
+                            onChange={e => setFormData({ ...formData, isActive: e.target.value === 'true' })}
+                        >
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

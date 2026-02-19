@@ -428,6 +428,160 @@ const Prospect = () => {
     const [filteredCities, setFilteredCities] = useState([]);
     const [availableProvinces, setAvailableProvinces] = useState([]);
 
+    // Auto-complete States
+    const [kecamatanList, setKecamatanList] = useState([]);
+    const [kelurahanList, setKelurahanList] = useState([]);
+    const [loadingRegions, setLoadingRegions] = useState(false);
+
+    // Fetch Kecamatan when Kabupaten changes
+    useEffect(() => {
+        if (!formData.kabupaten) {
+            setKecamatanList([]);
+            return;
+        }
+
+        const fetchKecamatan = async () => {
+            setLoadingRegions(true);
+            try {
+                // Using a public API for layout administrative regions or internal if available
+                // For now, using a placeholder logic or assuming we can fetch from an external source
+                // In a real app, you might use: https://emsifa.github.io/api-wilayah-indonesia/
+                // Here we will simulate or use a proxy if needed.
+                // NOTE: Since the user asked for "National Data", we can try to use a rigorous open API.
+
+                // Let's use a proxy endpoint or direct call if allowed. 
+                // Since this runs in browser, we can call external APIs.
+                // We first need the ID of the Regency (Kabupaten).
+                // This is complex without a local database of regions.
+                // We will attempt to use a known public API: https://www.emsifa.com/api-wilayah-indonesia/
+
+                // 1. Find Regency ID
+                // We need to search by name. This might be heavy.
+                // Alternative: Just allow free text if API fails.
+
+                // Simplified approach: user types, we suggest?
+                // Or better: Let's assume we implement a helper to fetch from emsifa.
+
+                // For this implementation, I will add a helper function to fetch regions.
+            } catch (e) {
+                console.error("Failed to fetch kecamatan", e);
+            } finally {
+                setLoadingRegions(false);
+            }
+        };
+        // fetchKecamatan();
+    }, [formData.kabupaten]);
+
+    // UPDATE: We will implement a direct fetch to the external API inside the component for simplicity,
+    // or better, create a small utility.
+
+    const fetchRegencies = async (provName) => {
+        // ... existing logic handles filteredCities from clusters ...
+    };
+
+    // Helper to fetch regions from external API (emsifa)
+    const [regencyId, setRegencyId] = useState(null);
+    const [districtId, setDistrictId] = useState(null);
+
+    // 1. Get Regency ID when Kabupaten is selected
+    useEffect(() => {
+        if (!formData.kabupaten) {
+            setKecamatanList([]);
+            setKelurahanList([]);
+            return;
+        }
+
+        const getRegencyId = async () => {
+            setLoadingRegions(true);
+            try {
+                // Step A: Get Provinces
+                const provRes = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
+                const provs = await provRes.json();
+
+                // Flexible Province Matching
+                const provNameInput = formData.province.toUpperCase();
+                const prov = provs.find(p =>
+                    p.name === provNameInput ||
+                    p.name.includes(provNameInput) ||
+                    provNameInput.includes(p.name)
+                );
+
+                if (prov) {
+                    // Step B: Get Regencies
+                    const regRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${prov.id}.json`);
+                    const regs = await regRes.json();
+
+                    const kabNameInput = formData.kabupaten.toUpperCase();
+
+                    // Specific matching logic to handle "KOTA TANGERANG" vs "TANGERANG SELATAN"
+                    const matchedReg = regs
+                        .filter(r => {
+                            const rName = r.name.toUpperCase();
+                            // Check if API name contains Input (e.g. "KOTA TANGERANG SELATAN" contains "TANGERANG SELATAN")
+                            // OR Input contains API name (e.g. "DKI JAKARTA" contains "JAKARTA" - rare for regency but possible)
+                            return rName.includes(kabNameInput) || kabNameInput.includes(rName);
+                        })
+                        .sort((a, b) => {
+                            const aName = a.name.toUpperCase();
+                            const bName = b.name.toUpperCase();
+
+                            // 1. Prefer Exact Match (ignoring KOTA/KABUPATEN prefix)
+                            const cleanA = aName.replace(/^(KABUPATEN|KOTA)\s+/, '');
+                            const cleanB = bName.replace(/^(KABUPATEN|KOTA)\s+/, '');
+                            const cleanInput = kabNameInput.replace(/^(KABUPATEN|KOTA)\s+/, '');
+
+                            if (cleanA === cleanInput) return -1;
+                            if (cleanB === cleanInput) return 1;
+
+                            // 2. Prefer name that CONTAINS the input (more specific)
+                            const aHasInput = aName.includes(kabNameInput);
+                            const bHasInput = bName.includes(kabNameInput);
+
+                            if (aHasInput && !bHasInput) return -1;
+                            if (!aHasInput && bHasInput) return 1;
+
+                            // 3. Prefer shorter length? (for "TANGERANG" -> "KOTA TANGERANG" vs "KABUPATEN TANGERANG")
+                            // Usually "KOTA" is what we want if available? or simply length diff.
+                            return aName.length - bName.length;
+                        })[0];
+
+                    if (matchedReg) {
+                        setRegencyId(matchedReg.id);
+                        // Step C: Get Districts (Kecamatan)
+                        const distRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${matchedReg.id}.json`);
+                        const dists = await distRes.json();
+                        setKecamatanList(dists);
+                    } else {
+                        console.warn('No matching regency found for:', formData.kabupaten);
+                        setKecamatanList([]);
+                    }
+                }
+            } catch (e) {
+                console.warn("External region API failed", e);
+            } finally {
+                setLoadingRegions(false);
+            }
+        };
+
+        getRegencyId();
+    }, [formData.kabupaten, formData.province]);
+
+    // 2. Get Villages (Kelurahan) when Kecamatan is selected
+    useEffect(() => {
+        if (!formData.kecamatan || !regencyId) return;
+
+        const getVillages = async () => {
+            // Find district ID from list
+            const dist = kecamatanList.find(d => d.name === formData.kecamatan);
+            if (dist) {
+                const vilRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${dist.id}.json`);
+                const vils = await vilRes.json();
+                setKelurahanList(vils);
+            }
+        };
+        getVillages();
+    }, [formData.kecamatan, regencyId, kecamatanList]);
+
     const fetchAuxData = async () => {
         try {
             const cRes = await fetch('/api/targets');
@@ -677,19 +831,25 @@ const Prospect = () => {
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Kecamatan</label>
-                                <input
-                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                                    Kecamatan {loadingRegions && <Loader2 className="inline w-3 h-3 animate-spin ml-1 text-blue-500" />}
+                                </label>
+                                <Select
+                                    label=""
+                                    options={[{ value: '', label: loadingRegions ? 'Loading...' : '- Select -' }, ...kecamatanList.map(k => ({ value: k.name, label: k.name }))]}
                                     value={formData.kecamatan}
-                                    onChange={e => setFormData({ ...formData, kecamatan: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, kecamatan: e.target.value, kelurahan: '' })}
+                                    disabled={loadingRegions || !kecamatanList.length}
                                 />
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Kelurahan</label>
-                                <input
-                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                <Select
+                                    label=""
+                                    options={[{ value: '', label: '- Select -' }, ...kelurahanList.map(k => ({ value: k.name, label: k.name }))]}
                                     value={formData.kelurahan}
                                     onChange={e => setFormData({ ...formData, kelurahan: e.target.value })}
+                                    disabled={!kelurahanList.length}
                                 />
                             </div>
                         </div>

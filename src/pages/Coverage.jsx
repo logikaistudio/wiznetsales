@@ -125,8 +125,8 @@ const Coverage = () => {
         coverageColor: '#22c55e',
         ftthNodeColor: '#2563eb',
         hfcNodeColor: '#ea580c',
-        ftthRadiusColor: '#22c55e',
-        hfcRadiusColor: '#eab308',
+        ftthRadiusColor: '#2563eb', // Match Node Color Default
+        hfcRadiusColor: '#ea580c', // Match Node Color Default
         ftthRadius: 50,
         hfcRadius: 50
     });
@@ -150,8 +150,9 @@ const Coverage = () => {
                     coverageColor: data.coverageColor || '#22c55e',
                     ftthNodeColor: data.ftthNodeColor || '#2563eb',
                     hfcNodeColor: data.hfcNodeColor || '#ea580c',
-                    ftthRadiusColor: data.ftthRadiusColor || '#22c55e',
-                    hfcRadiusColor: data.hfcRadiusColor || '#eab308',
+                    // Fallback to Node Color if Radius Color is not set
+                    ftthRadiusColor: data.ftthRadiusColor || data.ftthNodeColor || '#2563eb',
+                    hfcRadiusColor: data.hfcRadiusColor || data.hfcNodeColor || '#ea580c',
                     ftthRadius: parseInt(data.ftthRadius) || 50,
                     hfcRadius: parseInt(data.hfcRadius) || 50,
                     coverageOpacity: parseFloat(data.coverageOpacity) || 0.3,
@@ -238,7 +239,10 @@ const Coverage = () => {
             }
 
             // Use network-type-specific radius
-            const coverageRadius = nearestPoint?.networkType === 'FTTH'
+            const type = nearestPoint?.networkType ? String(nearestPoint.networkType).trim().toUpperCase() : '';
+            const isFTTH = type === 'FTTH';
+
+            const coverageRadius = isFTTH
                 ? (settings.ftthRadius || 50)
                 : (settings.hfcRadius || 50);
 
@@ -282,7 +286,10 @@ const Coverage = () => {
         }
 
         // Use network-type-specific radius
-        const coverageRadius = nearestPoint?.networkType === 'FTTH'
+        const type = nearestPoint?.networkType ? String(nearestPoint.networkType).trim().toUpperCase() : '';
+        const isFTTH = type === 'FTTH';
+
+        const coverageRadius = isFTTH
             ? (settings.ftthRadius || 50)
             : (settings.hfcRadius || 50);
 
@@ -395,7 +402,7 @@ const Coverage = () => {
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span>Node</span>
-                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.ftthNodeColor} onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value })} />
+                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.ftthNodeColor} onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value, ftthRadiusColor: e.target.value })} />
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span>Cover</span>
@@ -410,7 +417,7 @@ const Coverage = () => {
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span>Node</span>
-                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.hfcNodeColor} onChange={e => setSettings({ ...settings, hfcNodeColor: e.target.value })} />
+                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.hfcNodeColor} onChange={e => setSettings({ ...settings, hfcNodeColor: e.target.value, hfcRadiusColor: e.target.value })} />
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span>Cover</span>
@@ -634,8 +641,8 @@ const Coverage = () => {
                                             fillColor: '#ef4444',
                                             color: '#ef4444',
                                             weight: 2,
-                                            opacity: 0.8,
-                                            fillOpacity: 0.15
+                                            opacity: settings.coverageOpacity || 0.3,
+                                            fillOpacity: (settings.coverageOpacity || 0.3) * 0.5 // Usually fill is lighter for polygons
                                         }}
                                     >
                                         <Popup>
@@ -654,7 +661,10 @@ const Coverage = () => {
                             }
 
                             // Default: render as Circle with marker
-                            const isFTTH = point.networkType === 'FTTH';
+                            // FIX: Case-insensitive network type check
+                            const type = point.networkType ? String(point.networkType).trim().toUpperCase() : '';
+                            const isFTTH = type === 'FTTH';
+
                             const radiusColor = isFTTH ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308');
                             const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
 
@@ -755,12 +765,19 @@ const Coverage = () => {
                 {/* Network Nodes */}
                 <div className="border-t pt-2 mt-2 space-y-1">
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 border border-white shadow-sm" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb', borderRadius: '50%' }}></div>
-                        <span>FTTH Node ({settings.ftthRadius}m)</span>
+                        {/* Legend visualizing both Node setup and Radius Setup */}
+                        <div className="relative w-4 h-4 flex items-center justify-center">
+                            <div className="absolute top-0 left-0 w-full h-full rounded-full opacity-50" style={{ backgroundColor: settings.ftthRadiusColor || '#22c55e' }}></div>
+                            <div className="w-2 h-2 rounded-full relative z-10" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb' }}></div>
+                        </div>
+                        <span>FTTH ({settings.ftthRadius}m)</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 border border-white shadow-sm" style={{ backgroundColor: settings.hfcNodeColor || '#ea580c', borderRadius: '50%' }}></div>
-                        <span>HFC Node ({settings.hfcRadius}m)</span>
+                        <div className="relative w-4 h-4 flex items-center justify-center">
+                            <div className="absolute top-0 left-0 w-full h-full rounded-full opacity-50" style={{ backgroundColor: settings.hfcRadiusColor || '#eab308' }}></div>
+                            <div className="w-2 h-2 rounded-full relative z-10" style={{ backgroundColor: settings.hfcNodeColor || '#ea580c' }}></div>
+                        </div>
+                        <span>HFC ({settings.hfcRadius}m)</span>
                     </div>
                 </div>
 
