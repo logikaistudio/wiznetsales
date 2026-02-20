@@ -1385,6 +1385,10 @@ app.post('/api/customers', async (req, res) => {
         // Generate a simple Customer ID if not provided (e.g., CUST-TIMESTAMP)
         const customerId = item.customerId || `CUST-${Date.now()}`;
 
+        // Sanitize date fields - PostgreSQL DATE cannot accept empty string
+        const rfsDate = item.rfsDate && item.rfsDate !== '' ? item.rfsDate : null;
+        const prospectDate = item.prospectDate && item.prospectDate !== '' ? item.prospectDate : new Date();
+
         const query = `
             INSERT INTO customers (
                 customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
@@ -1396,8 +1400,8 @@ app.post('/api/customers', async (req, res) => {
 
         const values = [
             customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
-            item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
-            item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date(),
+            item.latitude || null, item.longitude || null, item.phone, item.email, item.productId, item.productName, rfsDate,
+            item.files ? JSON.stringify(item.files) : '[]', item.salesId || null, item.salesName, item.status || 'Prospect', prospectDate,
             item.isActive !== false, item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered'
         ];
 
@@ -1416,6 +1420,10 @@ app.put('/api/customers/:id', async (req, res) => {
         const { id } = req.params;
         const item = req.body;
 
+        // Sanitize date fields - PostgreSQL DATE cannot accept empty string
+        const rfsDate = item.rfsDate && item.rfsDate !== '' ? item.rfsDate : null;
+        const prospectDate = item.prospectDate && item.prospectDate !== '' ? item.prospectDate : new Date();
+
         const query = `
             UPDATE customers SET
                 customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
@@ -1427,8 +1435,8 @@ app.put('/api/customers/:id', async (req, res) => {
 
         const values = [
             item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
-            item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
-            item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
+            item.latitude || null, item.longitude || null, item.phone, item.email, item.productId, item.productName, rfsDate,
+            item.files ? JSON.stringify(item.files) : '[]', item.salesId || null, item.salesName, item.status, prospectDate,
             item.isActive !== false, item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered',
             id
         ];

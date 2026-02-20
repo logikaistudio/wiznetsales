@@ -266,6 +266,9 @@ const Prospect = () => {
             if (payload.longitude === '') payload.longitude = null;
             if (payload.productId === '') payload.productId = null;
             if (payload.salesId === '') payload.salesId = null;
+            // Sanitize date fields - empty string breaks PostgreSQL DATE type
+            if (payload.rfsDate === '') payload.rfsDate = null;
+            if (payload.prospectDate === '') payload.prospectDate = new Date().toISOString().split('T')[0];
 
             const response = await fetch(url, {
                 method,
