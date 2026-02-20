@@ -253,6 +253,9 @@ const Coverage = () => {
     const debouncedBounds = useDebounce(mapBounds, 300);
     const [typeFilter, setTypeFilter] = useState('All');
 
+    // Stable callback for MapEvents (must be at component level, not inside JSX)
+    const handleBoundsChange = useCallback((b) => setMapBounds(b), []);
+
     // Settings state - same as Coverage Management
     const [settings, setSettings] = useState({
         coverageRadius: 50,
@@ -321,18 +324,15 @@ const Coverage = () => {
         fetchCustomers();
     }, []);
 
-    // Fetch Coverage Data (BBOX + Filter)
+    // Fetch ALL Coverage Data (no BBOX filter — ensures all data always shows on map)
     useEffect(() => {
         const loadCoverage = async () => {
-            // If bounds are not yet ready, we skip (map initializes quickly)
-            if (!debouncedBounds) return;
-
             setIsLoading(true);
             try {
-                const { _southWest, _northEast } = debouncedBounds;
                 const params = new URLSearchParams({
-                    minLat: _southWest.lat, maxLat: _northEast.lat,
-                    minLng: _southWest.lng, maxLng: _northEast.lng,
+                    page: '1',
+                    limit: '5000', // Load all data
+                    map: 'true',   // Tell backend to include polygon_data & skip BBOX filter
                     networkType: typeFilter
                 });
 
@@ -347,7 +347,7 @@ const Coverage = () => {
             }
         };
         loadCoverage();
-    }, [debouncedBounds, typeFilter]);
+    }, [typeFilter]); // Only re-fetch when filter changes, not on every pan/zoom
 
     // Analyze Coverage Logic
     useEffect(() => {
@@ -807,7 +807,7 @@ const Coverage = () => {
                     />
 
                     {/* Handle Map Click & Bounds */}
-                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} onBoundsChange={useCallback((b) => setMapBounds(b), [])} />
+                    <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} onBoundsChange={handleBoundsChange} />
                     <RecenterMap center={mapCenter} />
 
                     {/* Render Manual Check Marker */}

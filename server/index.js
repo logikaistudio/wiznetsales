@@ -434,23 +434,25 @@ app.delete('/api/roles/:id', async (req, res) => {
 
 app.get('/api/coverage', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 100;
+    const limit = Math.min(parseInt(req.query.limit) || 100, 10000); // cap at 10000
     const offset = (page - 1) * limit;
     const search = req.query.search || '';
     const showAll = req.query.all === 'true';
+    const isMapPage = req.query.map === 'true'; // Coverage page (full data, includes polygon_data)
     const { minLat, maxLat, minLng, maxLng, networkType } = req.query;
 
-    // Determine if this is a map request (has bbox params)
-    const isMapRequest = !!(minLat && maxLat && minLng && maxLng);
+    // Determine if this is a BBOX map request (CoverageManagement map view)
+    const isBboxRequest = !!(minLat && maxLat && minLng && maxLng);
 
-    // For map view, only select the columns we actually need (skip polygon_data for markers)
+    // Both map-page and bbox requests need polygon_data
     const mapColumns = 'id, network_type, site_id, homepass_id, ampli_lat, ampli_long, locality, status, polygon_data';
     const tableColumns = 'id, network_type, site_id, homepass_id, ampli_lat, ampli_long, area_lat, area_long, locality, province, cluster, status, created_at';
 
     try {
-        let selectCols = isMapRequest ? mapColumns : tableColumns;
-        let queryText = `SELECT ${selectCols} FROM coverage_sites`;
-        let countQueryText = 'SELECT COUNT(*) FROM coverage_sites';
+        let selectCols = (isBboxRequest || isMapPage) ? mapColumns : tableColumns;
+        let baseTable = `coverage_sites`;
+        let queryText = `SELECT ${selectCols} FROM ${baseTable}`;
+        let countQueryText = `SELECT COUNT(*) FROM ${baseTable}`;
         let queryParams = [];
         let conditions = [];
 
@@ -466,13 +468,13 @@ app.get('/api/coverage', async (req, res) => {
             conditions.push(`network_type = $${queryParams.length}`);
         }
 
-        // BBOX Filter (Map View optimization)
-        if (isMapRequest) {
+        // BBOX Filter (CoverageManagement map view optimization)
+        if (isBboxRequest) {
             queryParams.push(minLat, maxLat);
-            conditions.push(`ampli_lat BETWEEN $${queryParams.length - 1} AND $${queryParams.length}`);
+            conditions.push(`(ampli_lat BETWEEN $${queryParams.length - 1} AND $${queryParams.length} OR polygon_data IS NOT NULL)`);
 
             queryParams.push(minLng, maxLng);
-            conditions.push(`ampli_long BETWEEN $${queryParams.length - 1} AND $${queryParams.length}`);
+            conditions.push(`(ampli_long BETWEEN $${queryParams.length - 1} AND $${queryParams.length} OR polygon_data IS NOT NULL)`);
         }
 
         if (conditions.length > 0) {
@@ -484,14 +486,15 @@ app.get('/api/coverage', async (req, res) => {
         let totalRows = 0;
         let rows = [];
 
-        if (showAll || isMapRequest) {
-            // Map View: Return matching records within bounds, capped for performance
-            queryText += ` ORDER BY id DESC LIMIT 3000`;
+        if (showAll || isBboxRequest || isMapPage) {
+            // For map views: return all matching records (capped for performance)
+            const capLimit = isMapPage ? limit : 3000;
+            queryText += ` ORDER BY id DESC LIMIT ${capLimit}`;
             const dataResponse = await db.query(queryText, queryParams);
             rows = dataResponse.rows;
             totalRows = rows.length;
         } else {
-            // Table View: Pagination
+            // Table View: Pagination (no polygon_data needed)
             const countResult = await db.query(countQueryText, queryParams);
             totalRows = parseInt(countResult.rows[0].count);
 
