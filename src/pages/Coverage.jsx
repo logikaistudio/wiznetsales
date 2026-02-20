@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import { Icon, divIcon } from 'leaflet';
@@ -53,6 +53,125 @@ const fixPolygon = (coords) => {
     return coords;
 };
 
+/**
+ * CoverageLayer — a component that MUST be rendered inside MapContainer.
+ * It injects a <style> tag to control SVG fill-opacity of coverage areas
+ * via CSS, bypassing react-leaflet's pathOptions update limitations in v5.
+ */
+const CoverageLayer = ({ coveragePoints, settings, mapBounds, createNodeIcon, fixPolygon }) => {
+    const opacityVal = settings.coverageOpacity ?? 0.3;
+    const strokeOpacity = Math.min(opacityVal + 0.2, 1);
+
+    // Inject a <style> tag that overrides SVG fill-opacity for coverage areas
+    useEffect(() => {
+        let styleEl = document.getElementById('coverage-opacity-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'coverage-opacity-style';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = `
+            path.coverage-area {
+                fill-opacity: ${opacityVal} !important;
+                stroke-opacity: ${strokeOpacity} !important;
+            }
+        `;
+        return () => { /* keep style tag alive while component exists */ };
+    }, [opacityVal, strokeOpacity]);
+
+    const polygons = [];
+    const points = [];
+
+    coveragePoints.forEach(point => {
+        if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
+            polygons.push(point);
+        } else if ((point.ampliLat || point.ampliLat === 0) && (point.ampliLong || point.ampliLong === 0)) {
+            if (mapBounds) {
+                if (mapBounds.contains([point.ampliLat, point.ampliLong])) points.push(point);
+            } else {
+                if (points.length < 1000) points.push(point);
+            }
+        }
+    });
+
+    const renderList = [...polygons, ...points.slice(0, 1500)];
+
+    return renderList.map((point, idx) => {
+        // Polygon path
+        if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
+            return (
+                <Polygon
+                    key={`cov-poly-${point.id || idx}-${opacityVal}`}
+                    positions={fixPolygon(point.polygonData)}
+                    pathOptions={{
+                        className: "coverage-area",
+                        fillColor: '#ef4444',
+                        color: '#ef4444',
+                        weight: 2,
+                        fillOpacity: opacityVal,
+                        opacity: opacityVal
+                    }}
+                >
+                    <Popup>
+                        <div className="text-xs font-sans space-y-1 min-w-[150px]">
+                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
+                                <span className="text-red-600 font-semibold text-[10px]">Area</span>
+                            </div>
+                            <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
+                            {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
+                            <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
+                        </div>
+                    </Popup>
+                </Polygon>
+            );
+        }
+
+        // Circle + Marker
+        const type = point.networkType ? String(point.networkType).trim().toUpperCase() : '';
+        const isFTTH = type === 'FTTH';
+        const radiusColor = isFTTH ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308');
+        const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
+
+        return (
+            <React.Fragment key={`cov-group-${point.id || idx}`}>
+                <Circle
+                    key={`cov-circle-${point.id || idx}-${opacityVal}`}
+                    center={[point.ampliLat, point.ampliLong]}
+                    pathOptions={{
+                        className: "coverage-area",
+                        fillColor: radiusColor,
+                        color: radiusColor,
+                        weight: 1,
+                        fillOpacity: opacityVal,
+                        opacity: strokeOpacity
+                    }}
+                    radius={radius}
+                />
+                <Marker
+                    position={[point.ampliLat, point.ampliLong]}
+                    icon={createNodeIcon(point.networkType, settings)}
+                >
+                    <Popup>
+                        <div className="text-xs font-sans space-y-1 min-w-[150px]">
+                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isFTTH ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                    {point.networkType}
+                                </span>
+                                <span className="text-sky-600 font-semibold text-[10px]">Node</span>
+                            </div>
+                            <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
+                            {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
+                            <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
+                        </div>
+                    </Popup>
+                </Marker>
+            </React.Fragment>
+        );
+    });
+};
+
+
 // Helper: Haversine Distance (in meters)
 function getDistance(lat1, lon1, lat2, lon2) {
     if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
@@ -104,11 +223,26 @@ const MapEvents = ({ onMapClick, isPicking, onBoundsChange }) => {
     return null;
 };
 
+// Component to handle map centering when center prop changes
+const RecenterMap = ({ center }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (center) {
+            map.setView(center, map.getZoom());
+        }
+    }, [center, map]);
+    return null;
+};
+
 const Coverage = () => {
+
     const navigate = useNavigate();
     const { user } = useAuth();
     const canEditSettings = user && ['super_admin', 'admin', 'manager', 'superadmin'].includes(user.role);
     const [showSettings, setShowSettings] = useState(false);
+    const [showRadius, setShowRadius] = useState(true);
+    const [searchAddress, setSearchAddress] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
 
     const [coveragePoints, setCoveragePoints] = useState([]);
     const [customers, setCustomers] = useState([]);
@@ -128,16 +262,18 @@ const Coverage = () => {
         ftthRadiusColor: '#2563eb', // Match Node Color Default
         hfcRadiusColor: '#ea580c', // Match Node Color Default
         ftthRadius: 50,
-        hfcRadius: 50
+        hfcRadius: 50,
+        coverageOpacity: 0.3,  // MUST be in initial state to avoid undefined
+        nodeSize: 12
     });
 
     // Manual Check State
     const [isPickingLocation, setIsPickingLocation] = useState(false);
     const [manualCheckPoint, setManualCheckPoint] = useState(null);
 
-    // Manual Input State
     const [manualInput, setManualInput] = useState({ lat: '', lng: '' });
     const [showInputForm, setShowInputForm] = useState(false);
+
 
     // Fetch Settings
     useEffect(() => {
@@ -165,7 +301,6 @@ const Coverage = () => {
         fetchSettings();
     }, []);
 
-    // Fetch Data
     // Fetch Customers with coords only (On Mount)
     useEffect(() => {
         const fetchCustomers = async () => {
@@ -320,7 +455,31 @@ const Coverage = () => {
         setShowInputForm(false);
     };
 
+    const handleAddressSearch = async (e) => {
+        e.preventDefault();
+        if (!searchAddress.trim()) return;
+
+        setIsSearching(true);
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchAddress)}&limit=1`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat);
+                const lon = parseFloat(data[0].lon);
+                handleMapClick({ lat, lng: lon });
+            } else {
+                alert('Location not found');
+            }
+        } catch (err) {
+            console.error('Search failed', err);
+            alert('Search failed. Please try again.');
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
     const handleSaveSettings = async () => {
+
         try {
             await fetch('/api/settings', {
                 method: 'PUT',
@@ -368,67 +527,129 @@ const Coverage = () => {
                             <h3 className="text-xs font-bold text-blue-800 uppercase">Map Visualization</h3>
                         </div>
 
-                        <div className="space-y-2">
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
-                                    <span>Node Size</span> <span>{settings.nodeSize || 12}px</span>
-                                </label>
+                        {/* Node Size Slider */}
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between items-center">
+                                <span>Node Size</span>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="rounded-full border border-gray-300 bg-gray-400"
+                                        style={{ width: `${settings.nodeSize || 12}px`, height: `${settings.nodeSize || 12}px`, maxWidth: '24px', maxHeight: '24px' }}
+                                    />
+                                    <span className="font-mono">{settings.nodeSize || 12}px</span>
+                                </div>
+                            </label>
+                            <div className="relative mt-1.5">
                                 <input
                                     type="range" min="4" max="24" step="1"
                                     value={settings.nodeSize || 12}
                                     onChange={e => setSettings({ ...settings, nodeSize: parseInt(e.target.value) })}
-                                    className="w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full cursor-pointer accent-blue-600"
+                                    style={{ height: '4px' }}
                                 />
+                                <div className="flex justify-between text-[9px] text-gray-400 mt-0.5">
+                                    <span>4px</span><span>24px</span>
+                                </div>
                             </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
-                                    <span>Coverage Opacity</span> <span>{settings.coverageOpacity || 0.3}</span>
-                                </label>
+                        </div>
+
+                        {/* Opacity Slider */}
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between items-center">
+                                <span>Coverage Opacity</span>
+                                <span className="font-mono bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[10px]">
+                                    {Math.round((settings.coverageOpacity || 0.3) * 100)}%
+                                </span>
+                            </label>
+                            <div className="relative mt-1.5">
                                 <input
-                                    type="range" min="0.1" max="1.0" step="0.1"
+                                    type="range" min="0.05" max="1.0" step="0.01"
                                     value={settings.coverageOpacity || 0.3}
                                     onChange={e => setSettings({ ...settings, coverageOpacity: parseFloat(e.target.value) })}
-                                    className="w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full cursor-pointer accent-blue-600"
+                                    style={{ height: '4px' }}
                                 />
+                                <div className="flex justify-between text-[9px] text-gray-400 mt-0.5">
+                                    <span>5%</span><span>Solid</span>
+                                </div>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div className="space-y-1">
-                                <p className="font-bold text-blue-700 text-[10px] border-b border-blue-100 pb-1">FTTH</p>
+                            <div className="space-y-1.5 bg-blue-50 rounded-lg p-2 border border-blue-100">
+                                <p className="font-bold text-blue-700 text-[10px] border-b border-blue-200 pb-1">FTTH</p>
                                 <div className="flex items-center justify-between">
-                                    <span>Radius (m)</span>
-                                    <input type="number" className="w-10 p-0.5 border rounded text-[10px] text-center" value={settings.ftthRadius} onChange={e => setSettings({ ...settings, ftthRadius: parseInt(e.target.value) })} />
+                                    <span className="text-gray-600">Radius (m)</span>
+                                    <input type="number" className="w-14 p-0.5 border rounded text-[10px] text-center bg-white" value={settings.ftthRadius} onChange={e => setSettings({ ...settings, ftthRadius: parseInt(e.target.value) })} />
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span>Node</span>
-                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.ftthNodeColor} onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value, ftthRadiusColor: e.target.value })} />
+                                    <span className="text-gray-600">Node</span>
+                                    <div className="flex items-center gap-1">
+                                        <div className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: settings.ftthNodeColor }} />
+                                        <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer opacity-0 absolute" value={settings.ftthNodeColor} onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value })} />
+                                        <input type="color" className="w-5 h-5 cursor-pointer rounded" value={settings.ftthNodeColor} onChange={e => setSettings({ ...settings, ftthNodeColor: e.target.value })} />
+                                    </div>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span>Cover</span>
-                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.ftthRadiusColor} onChange={e => setSettings({ ...settings, ftthRadiusColor: e.target.value })} />
+                                    <span className="text-gray-600">Area</span>
+                                    <input type="color" className="w-5 h-5 cursor-pointer rounded" value={settings.ftthRadiusColor} onChange={e => setSettings({ ...settings, ftthRadiusColor: e.target.value })} />
                                 </div>
                             </div>
-                            <div className="space-y-1">
-                                <p className="font-bold text-orange-700 text-[10px] border-b border-orange-100 pb-1">HFC</p>
+                            <div className="space-y-1.5 bg-orange-50 rounded-lg p-2 border border-orange-100">
+                                <p className="font-bold text-orange-700 text-[10px] border-b border-orange-200 pb-1">HFC</p>
                                 <div className="flex items-center justify-between">
-                                    <span>Radius (m)</span>
-                                    <input type="number" className="w-10 p-0.5 border rounded text-[10px] text-center" value={settings.hfcRadius} onChange={e => setSettings({ ...settings, hfcRadius: parseInt(e.target.value) })} />
+                                    <span className="text-gray-600">Radius (m)</span>
+                                    <input type="number" className="w-14 p-0.5 border rounded text-[10px] text-center bg-white" value={settings.hfcRadius} onChange={e => setSettings({ ...settings, hfcRadius: parseInt(e.target.value) })} />
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span>Node</span>
-                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.hfcNodeColor} onChange={e => setSettings({ ...settings, hfcNodeColor: e.target.value, hfcRadiusColor: e.target.value })} />
+                                    <span className="text-gray-600">Node</span>
+                                    <input type="color" className="w-5 h-5 cursor-pointer rounded" value={settings.hfcNodeColor} onChange={e => setSettings({ ...settings, hfcNodeColor: e.target.value })} />
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span>Cover</span>
-                                    <input type="color" className="w-5 h-5 p-0 border-0 rounded overflow-hidden cursor-pointer" value={settings.hfcRadiusColor} onChange={e => setSettings({ ...settings, hfcRadiusColor: e.target.value })} />
+                                    <span className="text-gray-600">Area</span>
+                                    <input type="color" className="w-5 h-5 cursor-pointer rounded" value={settings.hfcRadiusColor} onChange={e => setSettings({ ...settings, hfcRadiusColor: e.target.value })} />
                                 </div>
                             </div>
                         </div>
 
-                        <Button size="sm" onClick={handleSaveSettings} className="w-full text-xs h-7 mt-2">Save Settings</Button>
+                        <Button size="sm" onClick={handleSaveSettings} className="w-full text-xs h-7 mt-2">💾 Save Settings</Button>
                     </div>
                 )}
+
+                {/* Address Search */}
+                <form onSubmit={handleAddressSearch} className="mt-3 relative">
+                    <div className="flex gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search address..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                value={searchAddress}
+                                onChange={(e) => setSearchAddress(e.target.value)}
+                            />
+                        </div>
+                        <Button type="submit" size="sm" disabled={isSearching} className="h-8">
+                            {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Search'}
+                        </Button>
+                    </div>
+                </form>
+
+                {/* Visibility Toggle */}
+                <div className="mt-3 flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
+                    <span className="text-xs font-medium text-gray-700">Coverage Radius</span>
+                    <button
+                        onClick={() => setShowRadius(!showRadius)}
+                        className={cn(
+                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                            showRadius ? "bg-primary" : "bg-gray-200"
+                        )}
+                    >
+                        <span className={cn(
+                            "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                            showRadius ? "translate-x-4" : "translate-x-0"
+                        )} />
+                    </button>
+                </div>
 
                 {/* Manual Check Tools */}
                 <div className="mt-3 space-y-2 border-t pt-3 border-gray-100">
@@ -587,6 +808,7 @@ const Coverage = () => {
 
                     {/* Handle Map Click & Bounds */}
                     <MapEvents onMapClick={handleMapClick} isPicking={isPickingLocation} onBoundsChange={useCallback((b) => setMapBounds(b), [])} />
+                    <RecenterMap center={mapCenter} />
 
                     {/* Render Manual Check Marker */}
                     {manualCheckPoint && (
@@ -607,148 +829,47 @@ const Coverage = () => {
                         </Marker>
                     )}
 
-                    {/* Render Coverage Points (Network Nodes) - Optimized */}
-                    {(() => {
-                        const polygons = [];
-                        const points = [];
+                    {/* Coverage Layer (Polygons & Radius) */}
+                    {showRadius && (
+                        <CoverageLayer
+                            coveragePoints={coveragePoints}
+                            settings={settings}
+                            mapBounds={mapBounds}
+                            createNodeIcon={createNodeIcon}
+                            fixPolygon={fixPolygon}
+                        />
+                    )}
 
-                        coveragePoints.forEach(point => {
-                            if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
-                                polygons.push(point);
-                            } else if ((point.ampliLat || point.ampliLat === 0) && (point.ampliLong || point.ampliLong === 0)) {
-                                if (mapBounds) {
-                                    if (mapBounds.contains([point.ampliLat, point.ampliLong])) {
-                                        points.push(point);
-                                    }
-                                } else {
-                                    // Fallback
-                                    if (points.length < 1000) points.push(point);
-                                }
-                            }
-                        });
-
-                        const renderedPoints = points.slice(0, 1500);
-                        const renderList = [...polygons, ...renderedPoints];
-
-                        return renderList.map((point, idx) => {
-                            // If point has polygon data, render as Polygon
-                            if (point.polygonData && Array.isArray(point.polygonData) && point.polygonData.length > 0) {
-                                return (
-                                    <Polygon
-                                        key={`cov-poly-${point.id || idx}`}
-                                        positions={fixPolygon(point.polygonData)}
-                                        pathOptions={{
-                                            fillColor: '#ef4444',
-                                            color: '#ef4444',
-                                            weight: 2,
-                                            opacity: settings.coverageOpacity || 0.3,
-                                            fillOpacity: (settings.coverageOpacity || 0.3) * 0.5 // Usually fill is lighter for polygons
-                                        }}
-                                    >
-                                        <Popup>
-                                            <div className="text-xs font-sans space-y-1 min-w-[150px]">
-                                                <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{point.networkType}</span>
-                                                    <span className="text-red-600 font-semibold text-[10px]">Area</span>
-                                                </div>
-                                                <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
-                                                {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
-                                                <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
-                                            </div>
-                                        </Popup>
-                                    </Polygon>
-                                );
-                            }
-
-                            // Default: render as Circle with marker
-                            // FIX: Case-insensitive network type check
-                            const type = point.networkType ? String(point.networkType).trim().toUpperCase() : '';
-                            const isFTTH = type === 'FTTH';
-
-                            const radiusColor = isFTTH ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308');
-                            const radius = isFTTH ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50);
-
-                            return (
-                                <React.Fragment key={`cov-group-${point.id || idx}`}>
-                                    <Circle
-                                        key={`cov-circle-${point.id || idx}`}
-                                        center={[point.ampliLat, point.ampliLong]}
-                                        pathOptions={{
-                                            fillColor: radiusColor,
-                                            color: radiusColor,
-                                            weight: 1,
-                                            opacity: settings.coverageOpacity || 0.3,
-                                            fillOpacity: settings.coverageOpacity || 0.3
-                                        }}
-                                        radius={radius}
-                                    />
-                                    <Marker
-                                        key={`cov-marker-${point.id || idx}`}
-                                        position={[point.ampliLat, point.ampliLong]}
-                                        icon={createNodeIcon(point.networkType, settings)}
-                                    >
-                                        <Popup>
-                                            <div className="text-xs font-sans space-y-1 min-w-[150px]">
-                                                <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", isFTTH ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
-                                                        {point.networkType}
-                                                    </span>
-                                                    <span className="text-sky-600 font-semibold text-[10px]">Node</span>
-                                                </div>
-                                                <p><span className="text-gray-500">Site ID:</span> <strong>{point.siteId}</strong></p>
-                                                {point.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{point.homepassId}</strong></p>}
-                                                <p><span className="text-gray-500">Locality:</span> {point.locality}</p>
-                                            </div>
-                                        </Popup>
-                                    </Marker>
-                                </React.Fragment>
-                            );
-                        });
-                    })()}
-
-                    {/* Render Customer Points */}
                     {analyzedCustomers.map((cust, idx) => (
-                        <Marker
-                            key={`cust-${cust.id || idx}`}
-                            position={[cust.lat, cust.lng]}
-                            icon={customerIcon(cust.coverageStatus)}
-                        >
+                        <Marker key={`cust-${cust.id || idx}`} position={[cust.lat, cust.lng]} icon={customerIcon(cust.coverageStatus)}>
                             <Popup>
-                                <div className="text-xs font-sans p-1">
+                                <div className="text-xs p-1">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className={cn(
-                                            "w-2 h-2 rounded-full",
-                                            cust.coverageStatus === 'Covered' ? "bg-green-500" : "bg-red-500"
-                                        )} />
-                                        <strong className={cn(cust.coverageStatus === 'Covered' ? "text-green-600" : "text-red-600")}>
-                                            {cust.coverageStatus}
-                                        </strong>
+                                        <span className={cn("w-2 h-2 rounded-full", cust.coverageStatus === 'Covered' ? "bg-green-500" : "bg-red-500")} />
+                                        <strong className={cust.coverageStatus === 'Covered' ? "text-green-600" : "text-red-600"}>{cust.coverageStatus}</strong>
                                     </div>
-                                    <p className="font-bold text-sm text-gray-800">{cust.name}</p>
-                                    <p className="text-gray-500 mb-2">{cust.address}</p>
-
-                                    <div className="bg-gray-50 p-2 rounded border border-gray-100">
-                                        <p className="text-[10px] text-gray-400 uppercase">Nearest Node</p>
-                                        {cust.nearestPoint ? (
-                                            <>
-                                                <p className="font-medium text-gray-700">{cust.nearestPoint.siteId} - {cust.nearestPoint.ampli}</p>
-                                                <p className="text-xs text-blue-600">
-                                                    Distance: {Math.round(cust.nearestDistance)} m
-                                                </p>
-                                            </>
-                                        ) : (
-                                            <p className="text-gray-500 italic">No node found.</p>
-                                        )}
-                                    </div>
+                                    <p className="font-bold text-sm">{cust.name}</p>
+                                    <p className="text-gray-500 mb-1">{cust.address}</p>
+                                    {cust.nearestPoint ? (
+                                        <div className="bg-gray-50 p-2 rounded border border-gray-100">
+                                            <p className="text-[10px] text-gray-400">Nearest Node:</p>
+                                            <p className="font-medium text-gray-700">{cust.nearestPoint.siteId} - {cust.nearestPoint.ampli}</p>
+                                            <p className="text-xs text-blue-600">
+                                                Distance: {Math.round(cust.nearestDistance)} m
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-gray-500 italic">No node found.</p>
+                                    )}
                                 </div>
                             </Popup>
                         </Marker>
                     ))}
-
                 </MapContainer>
             </div>
 
-            {/* Legend */}
+
+            {/* Legend Overlay */}
             <div className="absolute bottom-6 right-6 z-[400] bg-white p-3 rounded-lg shadow-md border border-gray-200 text-xs">
                 <h4 className="font-bold mb-2 text-gray-700 border-b pb-1">Map Legend</h4>
 
@@ -765,16 +886,15 @@ const Coverage = () => {
                 {/* Network Nodes */}
                 <div className="border-t pt-2 mt-2 space-y-1">
                     <div className="flex items-center gap-2">
-                        {/* Legend visualizing both Node setup and Radius Setup */}
                         <div className="relative w-4 h-4 flex items-center justify-center">
-                            <div className="absolute top-0 left-0 w-full h-full rounded-full opacity-50" style={{ backgroundColor: settings.ftthRadiusColor || '#22c55e' }}></div>
+                            <div className="absolute top-0 left-0 w-full h-full rounded-full" style={{ backgroundColor: settings.ftthRadiusColor || '#22c55e', opacity: settings.coverageOpacity || 0.3 }}></div>
                             <div className="w-2 h-2 rounded-full relative z-10" style={{ backgroundColor: settings.ftthNodeColor || '#2563eb' }}></div>
                         </div>
                         <span>FTTH ({settings.ftthRadius}m)</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="relative w-4 h-4 flex items-center justify-center">
-                            <div className="absolute top-0 left-0 w-full h-full rounded-full opacity-50" style={{ backgroundColor: settings.hfcRadiusColor || '#eab308' }}></div>
+                            <div className="absolute top-0 left-0 w-full h-full rounded-full" style={{ backgroundColor: settings.hfcRadiusColor || '#eab308', opacity: settings.coverageOpacity || 0.3 }}></div>
                             <div className="w-2 h-2 rounded-full relative z-10" style={{ backgroundColor: settings.hfcNodeColor || '#ea580c' }}></div>
                         </div>
                         <span>HFC ({settings.hfcRadius}m)</span>
@@ -783,7 +903,7 @@ const Coverage = () => {
 
                 {coveragePoints.some(p => p.polygonData && Array.isArray(p.polygonData) && p.polygonData.length > 0) && (
                     <div className="flex items-center gap-2 border-t pt-2 mt-2">
-                        <div className="w-3 h-3 border-2 border-red-500 bg-red-500/20" style={{ borderRadius: '2px' }}></div>
+                        <div className="w-3 h-3 border-2 border-red-500 bg-red-500" style={{ borderRadius: '2px', opacity: settings.coverageOpacity || 0.3 }}></div>
                         <span>Coverage Area</span>
                     </div>
                 )}

@@ -146,6 +146,8 @@ app.get('/api/setup-schema', async (req, res) => {
             ['fat', "VARCHAR(100)"],
             ['homepass_id', "VARCHAR(100)"],
             ['site_id', "VARCHAR(100)"],
+            ['catatan', "TEXT"],
+            ['prospect_status', "VARCHAR(50) DEFAULT 'Covered'"],
             ['created_at', "TIMESTAMP DEFAULT NOW()"],
             ['updated_at', "TIMESTAMP DEFAULT NOW()"]
         ]) await addCol('customers', c, d);
@@ -1186,8 +1188,9 @@ app.post('/api/customers/bulk', async (req, res) => {
                     await db.query(`
                         INSERT INTO customers (
                             customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
-                            latitude, longitude, phone, email, product_name, status, prospect_date, is_active
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                            latitude, longitude, phone, email, product_name, status, prospect_date, is_active,
+                            fat, homepass_id, site_id, catatan, prospect_status
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
                         ON CONFLICT (customer_id) DO UPDATE SET
                             type = EXCLUDED.type,
                             name = EXCLUDED.name,
@@ -1203,23 +1206,31 @@ app.post('/api/customers/bulk', async (req, res) => {
                             product_name = EXCLUDED.product_name,
                             status = EXCLUDED.status,
                             prospect_date = EXCLUDED.prospect_date,
-                            is_active = EXCLUDED.is_active
+                            is_active = EXCLUDED.is_active,
+                            fat = EXCLUDED.fat,
+                            homepass_id = EXCLUDED.homepass_id,
+                            site_id = EXCLUDED.site_id,
+                            catatan = EXCLUDED.catatan,
+                            prospect_status = EXCLUDED.prospect_status
                     `, [
                         customerId, item.type || 'Broadband Home', item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
                         item.latitude || 0, item.longitude || 0, item.phone, item.email, item.productName, item.status || 'Prospect',
-                        item.prospectDate || new Date(), item.isActive !== false
+                        item.prospectDate || new Date(), item.isActive !== false,
+                        item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered'
                     ]);
                 } else {
                     await db.query(`
                         INSERT INTO customers (
                             customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
-                            latitude, longitude, phone, email, product_name, status, prospect_date, is_active
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                            latitude, longitude, phone, email, product_name, status, prospect_date, is_active,
+                            fat, homepass_id, site_id, catatan, prospect_status
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
                         ON CONFLICT (customer_id) DO NOTHING
                     `, [
                         customerId, item.type || 'Broadband Home', item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
                         item.latitude || 0, item.longitude || 0, item.phone, item.email, item.productName, item.status || 'Prospect',
-                        item.prospectDate || new Date(), item.isActive !== false
+                        item.prospectDate || new Date(), item.isActive !== false,
+                        item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered'
                     ]);
                 }
                 count++;
@@ -1266,7 +1277,7 @@ app.get('/api/customers', async (req, res) => {
             productId: row.product_id,
             productName: row.product_name,
             rfsDate: row.rfs_date,
-            files: row.files ? JSON.parse(row.files) : [],
+            files: row.files ? (typeof row.files === 'string' ? JSON.parse(row.files) : row.files) : [],
             salesId: row.sales_id,
             salesName: row.sales_name,
             status: row.status,
@@ -1274,8 +1285,10 @@ app.get('/api/customers', async (req, res) => {
             prospectDate: row.prospect_date,
             openTicketCount: row.open_ticket_count || 0,
             fat: row.fat,
-            homepassId: row.homepass_id, // Added homepassId
-            siteId: row.site_id // Added siteId
+            homepassId: row.homepass_id,
+            siteId: row.site_id,
+            catatan: row.catatan,
+            prospectStatus: row.prospect_status || 'Covered'
         })));
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1292,8 +1305,8 @@ app.post('/api/customers', async (req, res) => {
             INSERT INTO customers (
                 customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
                 latitude, longitude, phone, email, product_id, product_name, rfs_date,
-                files, sales_id, sales_name, status, prospect_date, is_active, fat, homepass_id, site_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+                files, sales_id, sales_name, status, prospect_date, is_active, fat, homepass_id, site_id, catatan, prospect_status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
             RETURNING id
         `;
 
@@ -1301,7 +1314,7 @@ app.post('/api/customers', async (req, res) => {
             customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status || 'Prospect', item.prospectDate || new Date(),
-            item.isActive !== false, item.fat, item.homepassId, item.siteId
+            item.isActive !== false, item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered'
         ];
 
         const result = await db.query(query, values);
@@ -1323,15 +1336,16 @@ app.put('/api/customers/:id', async (req, res) => {
             UPDATE customers SET
                 customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
                 latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
-                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22, homepass_id=$23, site_id=$24
-            WHERE id = $25
+                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22, homepass_id=$23, site_id=$24,
+                catatan=$25, prospect_status=$26
+            WHERE id = $27
         `;
 
         const values = [
             item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude, item.longitude, item.phone, item.email, item.productId, item.productName, item.rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId, item.salesName, item.status, item.prospectDate,
-            item.isActive !== false, item.fat, item.homepassId, item.siteId,
+            item.isActive !== false, item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered',
             id
         ];
 

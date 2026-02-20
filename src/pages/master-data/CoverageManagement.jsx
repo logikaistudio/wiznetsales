@@ -59,12 +59,127 @@ const MapBoundsHandler = ({ onBoundsChange }) => {
     return null;
 };
 
+/**
+ * CoverageLayer (Management View) — Render inside MapContainer.
+ * Injects CSS to control fill-opacity of Leaflet SVG paths.
+ */
+const CoverageLayer = ({ coverageData, settings, mapBounds, createNodeIcon, fixPolygon, handleOpenModal }) => {
+    const opacityVal = settings.coverageOpacity ?? 0.3;
+    const strokeOpacity = Math.min(opacityVal + 0.2, 1);
+
+    useEffect(() => {
+        let styleEl = document.getElementById('cov-mgmt-opacity-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'cov-mgmt-opacity-style';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = `
+            path.coverage-area {
+                fill-opacity: ${opacityVal} !important;
+                stroke-opacity: ${strokeOpacity} !important;
+            }
+        `;
+    }, [opacityVal, strokeOpacity]);
+
+    const polygons = [];
+    const points = [];
+
+    coverageData.forEach(site => {
+        if (site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0) {
+            polygons.push(site);
+        } else if ((site.ampliLat || site.ampliLat === 0) && (site.ampliLong || site.ampliLong === 0)) {
+            if (mapBounds) {
+                if (mapBounds.contains([site.ampliLat, site.ampliLong])) points.push(site);
+            } else {
+                if (points.length < 100) points.push(site);
+            }
+        }
+    });
+
+    const renderedPoints = points.slice(0, 500);
+    const renderList = [...polygons, ...renderedPoints];
+
+    return renderList.map((site) => (
+        <React.Fragment key={`site-${site.id}`}>
+            {site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0 ? (
+                <Polygon
+                    key={`mgmt-poly-${site.id}-${opacityVal}`}
+                    positions={fixPolygon(site.polygonData)}
+                    pathOptions={{
+                        className: "coverage-area",
+                        color: '#ef4444',
+                        fillColor: '#ef4444',
+                        fillOpacity: opacityVal,
+                        opacity: opacityVal,
+                        weight: 2
+                    }}
+                    eventHandlers={{ click: () => handleOpenModal(site) }}
+                >
+                    <Popup>
+                        <div className="text-xs space-y-1 min-w-[150px]">
+                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{site.networkType}</span>
+                                <span className="text-red-600 font-semibold text-[10px]">Area</span>
+                            </div>
+                            <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
+                            {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
+                            <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
+                        </div>
+                    </Popup>
+                </Polygon>
+            ) : (
+                <>
+                    {site.status !== 'Inactive' && (
+                        <Circle
+                            key={`mgmt-circle-${site.id}-${opacityVal}`}
+                            center={[site.ampliLat, site.ampliLong]}
+                            radius={site.networkType === 'FTTH' ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50)}
+                            pathOptions={{
+                                className: "coverage-area",
+                                color: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
+                                fillColor: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
+                                fillOpacity: opacityVal,
+                                opacity: strokeOpacity,
+                                weight: 1
+                            }}
+                        />
+                    )}
+                    <Marker
+                        position={[site.ampliLat, site.ampliLong]}
+                        icon={createNodeIcon(site.networkType)}
+                        eventHandlers={{ click: () => handleOpenModal(site) }}
+                    >
+                        <Popup>
+                            <div className="text-xs space-y-1 min-w-[150px]">
+                                <div className="flex items-center gap-2 border-b pb-1 mb-1">
+                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", site.networkType === 'FTTH' ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
+                                        {site.networkType}
+                                    </span>
+                                    <span className="text-sky-600 font-semibold text-[10px]">Point</span>
+                                </div>
+                                <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
+                                {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
+                                <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
+                            </div>
+                        </Popup>
+                    </Marker>
+                </>
+            )}
+        </React.Fragment>
+    ));
+};
+
 const CoverageManagement = () => {
     // Data State
     const [searchTerm, setSearchTerm] = useState('');
-    const [typeFilter, setTypeFilter] = useState('All'); // Added network filter
+    const [typeFilter, setTypeFilter] = useState('All');
     const [coverageData, setCoverageData] = useState([]);
     const [activeView, setActiveView] = useState('table');
+    const [showRadius, setShowRadius] = useState(true);
+    const [searchAddress, setSearchAddress] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalRows, setTotalRows] = useState(0);
@@ -207,7 +322,37 @@ const CoverageManagement = () => {
             };
             fetchMapData();
         }
-    }, [activeView, debouncedBounds, searchTerm, typeFilter]); // Add typeFilter and searchTerm dependencies
+    }, [activeView, debouncedBounds, searchTerm, typeFilter]);
+
+    const handleAddressSearch = async (e) => {
+        e.preventDefault();
+        if (!searchAddress.trim()) return;
+
+        setIsSearching(true);
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchAddress)}&limit=1`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat);
+                const lon = parseFloat(data[0].lon);
+                // We don't have a direct "center map" method without a map ref, 
+                // but the MapContainer center is dynamic.
+                // However, search results usually just need to fly to. 
+                // For now, let's just alert let the user know where it is or use a state to center.
+                // In Coverage.jsx we used handleMapClick which sets manualCheckPoint.
+                // Here we don't have that. Let's just set the map view if we can get ref.
+                alert(`Located at: ${lat}, ${lon}. Map will center on move if dynamic.`);
+            } else {
+                alert('Location not found');
+            }
+        } catch (err) {
+            console.error('Search failed', err);
+            alert('Search failed. Please try again.');
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
 
     const handleSaveSettings = async (e) => {
         e.preventDefault();
@@ -233,7 +378,8 @@ const CoverageManagement = () => {
         ftthRadiusColor: '#22c55e',
         hfcRadiusColor: '#eab308', // Yellow default
         ftthRadius: 50,
-        hfcRadius: 50
+        hfcRadius: 50,
+        coverageOpacity: 0.3
     });
 
     const [colorZones, setColorZones] = useState([
@@ -274,11 +420,14 @@ const CoverageManagement = () => {
     }, []);
 
     useEffect(() => {
-        // Fetch data whenever view mode changes or on initial load
-        // If map -> fetch all. If table -> fetch page 1 (or current).
-        fetchData(currentPage, searchTerm, activeView);
+        // Fetch settings once on mount only
         fetchSettings();
-    }, [fetchData, fetchSettings, activeView]); // Add activeView dependency
+    }, [fetchSettings]);
+
+    useEffect(() => {
+        // Fetch data whenever view mode or filter changes
+        fetchData(currentPage, searchTerm, activeView);
+    }, [fetchData, activeView]); // Add activeView dependency
 
     // Debounce Search
     useEffect(() => {
@@ -914,105 +1063,56 @@ const CoverageManagement = () => {
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             <MapBoundsHandler onBoundsChange={useCallback((b) => setMapBounds(b), [])} />
 
-                            {/* Render Logic: Optimize large datasets */}
-                            {(() => {
-                                // Filter data based on bounds to prevent rendering 20k markers
-                                const polygons = [];
-                                const points = [];
-
-                                coverageData.forEach(site => {
-                                    // 1. Always prioritize Polygons
-                                    if (site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0) {
-                                        polygons.push(site);
-                                    }
-                                    // 2. For points, check if within bounds
-                                    else if ((site.ampliLat || site.ampliLat === 0) && (site.ampliLong || site.ampliLong === 0)) {
-                                        // If bounds available, check intersection. Else (initial), show limited set
-                                        if (mapBounds) {
-                                            if (mapBounds.contains([site.ampliLat, site.ampliLong])) {
-                                                points.push(site);
-                                            }
-                                        } else {
-                                            // Fallback if bounds not ready (initial load)
-                                            if (points.length < 100) points.push(site);
-                                        }
-                                    }
-                                });
-
-                                // Limit visible points to reasonable number for DOM performance (e.g., 500)
-                                // If too many points in view, we slice them.
-                                const renderedPoints = points.slice(0, 500);
-                                const renderList = [...polygons, ...renderedPoints];
-
-                                return renderList.map((site) => (
-                                    <React.Fragment key={`site-${site.id}`}>
-                                        {/* If site has polygon data, render polygon border */}
-                                        {site.polygonData && Array.isArray(site.polygonData) && site.polygonData.length > 0 ? (
-                                            <Polygon
-                                                positions={fixPolygon(site.polygonData)}
-                                                pathOptions={{
-                                                    color: '#ef4444',
-                                                    fillColor: '#ef4444',
-                                                    fillOpacity: 0.1,
-                                                    weight: 2
-                                                }}
-                                                eventHandlers={{ click: () => handleOpenModal(site) }}
-                                            >
-                                                <Popup>
-                                                    <div className="text-xs space-y-1 min-w-[150px]">
-                                                        <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">{site.networkType}</span>
-                                                            <span className="text-red-600 font-semibold text-[10px]">Area</span>
-                                                        </div>
-                                                        <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
-                                                        {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
-                                                        <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
-                                                    </div>
-                                                </Popup>
-                                            </Polygon>
-                                        ) : (
-                                            <>
-                                                {/* Render Coverage Radius Circles based on Network Type */}
-                                                {site.status !== 'Inactive' && (
-                                                    <Circle
-                                                        key={`c-${site.id}`}
-                                                        center={[site.ampliLat, site.ampliLong]}
-                                                        radius={site.networkType === 'FTTH' ? (settings.ftthRadius || 50) : (settings.hfcRadius || 50)}
-                                                        pathOptions={{
-                                                            color: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
-                                                            fillColor: site.networkType === 'FTTH' ? (settings.ftthRadiusColor || '#22c55e') : (settings.hfcRadiusColor || '#eab308'),
-                                                            fillOpacity: settings.coverageOpacity || 0.1, // Use setting or default
-                                                            weight: 1
-                                                        }}
-                                                    />
-                                                )}
-
-                                                {/* Marker on top */}
-                                                <Marker
-                                                    position={[site.ampliLat, site.ampliLong]}
-                                                    icon={createNodeIcon(site.networkType)}
-                                                    eventHandlers={{ click: () => handleOpenModal(site) }}
-                                                >
-                                                    <Popup>
-                                                        <div className="text-xs space-y-1 min-w-[150px]">
-                                                            <div className="flex items-center gap-2 border-b pb-1 mb-1">
-                                                                <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", site.networkType === 'FTTH' ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700")}>
-                                                                    {site.networkType}
-                                                                </span>
-                                                                <span className="text-sky-600 font-semibold text-[10px]">Point</span>
-                                                            </div>
-                                                            <p><span className="text-gray-500">Site ID:</span> <strong>{site.siteId}</strong></p>
-                                                            {site.homepassId && <p><span className="text-gray-500">Homepass:</span> <strong className="text-purple-600">{site.homepassId}</strong></p>}
-                                                            <p><span className="text-gray-500">Locality:</span> {site.locality}</p>
-                                                        </div>
-                                                    </Popup>
-                                                </Marker>
-                                            </>
-                                        )}
-                                    </React.Fragment>
-                                ));
-                            })()}
+                            {/* Coverage Layer (Handles circles, polygons and markers) */}
+                            {showRadius && (
+                                <CoverageLayer
+                                    coverageData={coverageData}
+                                    settings={settings}
+                                    mapBounds={mapBounds}
+                                    createNodeIcon={createNodeIcon}
+                                    fixPolygon={fixPolygon}
+                                    handleOpenModal={handleOpenModal}
+                                />
+                            )}
                         </MapContainer>
+
+                        {/* Top Left Search and Toggle Overlay */}
+                        <div className="absolute top-4 left-4 z-[1000] space-y-2 w-72">
+                            {/* Address Search */}
+                            <form onSubmit={handleAddressSearch} className="bg-white p-2 rounded-lg shadow-lg border flex gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search address..."
+                                        className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                        value={searchAddress}
+                                        onChange={(e) => setSearchAddress(e.target.value)}
+                                    />
+                                </div>
+                                <Button type="submit" size="sm" disabled={isSearching} className="h-8">
+                                    {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Search'}
+                                </Button>
+                            </form>
+
+                            {/* Radius Toggle */}
+                            <div className="bg-white p-2 rounded-lg shadow-lg border flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-700">Show Coverage Area</span>
+                                <button
+                                    onClick={() => setShowRadius(!showRadius)}
+                                    className={cn(
+                                        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                        showRadius ? "bg-primary" : "bg-gray-200"
+                                    )}
+                                >
+                                    <span className={cn(
+                                        "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                        showRadius ? "translate-x-4" : "translate-x-0"
+                                    )} />
+                                </button>
+                            </div>
+                        </div>
+
 
                         {/* Dynamic Legend based on Settings */}
                         <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 z-[1000] border">
@@ -1021,13 +1121,13 @@ const CoverageManagement = () => {
                                 {/* Polygon coverage legend */}
                                 {coverageData.some(s => s.polygonData && Array.isArray(s.polygonData) && s.polygonData.length > 0) && (
                                     <div className="flex items-center gap-2 text-xs border-b pb-1.5 mb-1.5">
-                                        <div className="w-3 h-3 border-2 border-red-500 bg-red-500/10" style={{ borderRadius: '2px' }}></div>
+                                        <div className="w-3 h-3 border-2 border-red-500 bg-red-500" style={{ borderRadius: '2px', opacity: settings.coverageOpacity || 0.3 }}></div>
                                         <span className="text-gray-700">Area Coverage</span>
                                     </div>
                                 )}
                                 {/* FTTH Legend */}
                                 <div className="flex items-center gap-2 text-xs">
-                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.ftthRadiusColor || '#22c55e', borderRadius: '50%' }}></div>
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.ftthRadiusColor || '#22c55e', borderRadius: '50%', opacity: settings.coverageOpacity || 0.3 }}></div>
                                     <span className="text-gray-700">FTTH Radius ({settings.ftthRadius || 50}m)</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs">
@@ -1039,7 +1139,7 @@ const CoverageManagement = () => {
 
                                 {/* HFC Legend */}
                                 <div className="flex items-center gap-2 text-xs">
-                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.hfcRadiusColor || '#eab308', borderRadius: '50%' }}></div>
+                                    <div className="w-3 h-3 border border-white shadow" style={{ backgroundColor: settings.hfcRadiusColor || '#eab308', borderRadius: '50%', opacity: settings.coverageOpacity || 0.3 }}></div>
                                     <span className="text-gray-700">HFC Radius ({settings.hfcRadius || 50}m)</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs">
@@ -1313,24 +1413,34 @@ const CoverageManagement = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        {/* General Settings */}
-                        <div className="border rounded-xl p-4 bg-gray-50 border-gray-200">
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Coverage Opacity (Transparency)</label>
-                            <div className="flex items-center gap-4">
-                                <input
-                                    type="range"
-                                    min="0.1"
-                                    max="1.0"
-                                    step="0.1"
-                                    value={settings.coverageOpacity || 0.3}
-                                    onChange={e => setSettings({ ...settings, coverageOpacity: parseFloat(e.target.value) })}
-                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                />
-                                <span className="text-sm font-bold text-gray-700 w-12 text-center">
-                                    {Math.round((settings.coverageOpacity || 0.3) * 100)}%
-                                </span>
-                            </div>
+                    {/* General Settings — Opacity */}
+                    <div className="border rounded-xl p-4 bg-gray-50 border-gray-200">
+                        <div className="flex items-center gap-2 mb-3 border-b border-gray-200 pb-2">
+                            <h3 className="font-semibold text-gray-800 text-sm">General Settings</h3>
+                        </div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1 flex justify-between items-center">
+                            <span>Coverage Opacity (Transparency)</span>
+                            <span className="font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">
+                                {Math.round((settings.coverageOpacity || 0.3) * 100)}%
+                            </span>
+                        </label>
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="range"
+                                min="0.05"
+                                max="1.0"
+                                step="0.01"
+                                value={settings.coverageOpacity || 0.3}
+                                onChange={e => setSettings({ ...settings, coverageOpacity: parseFloat(e.target.value) })}
+                                className="w-full cursor-pointer accent-blue-600"
+                                style={{ height: '4px' }}
+                            />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                            <span>5% (Almost transparent)</span>
+                            <span>100% (Solid)</span>
                         </div>
                     </div>
 

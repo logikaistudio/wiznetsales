@@ -56,9 +56,14 @@ const Prospect = () => {
         isActive: true,
         files: [],
         fat: '',
-        homepassId: '', // Added homepassId
-        siteId: '' // Added for auto-fill
+        homepassId: '',
+        siteId: '',
+        catatan: '',
+        prospectStatus: 'Covered'
     });
+
+    const [activeTab, setActiveTab] = useState('Covered'); // 'Covered' or 'Case Activation'
+
 
     // Auto-fill Site ID & FAT based on Homepass ID
     useEffect(() => {
@@ -191,7 +196,9 @@ const Prospect = () => {
                 prospectDate: new Date().toISOString().split('T')[0], isActive: true, files: [],
                 fat: nearestPoint?.siteId || '',
                 homepassId: nearestPoint?.homepassId || nearestPoint?.siteId || '', // Use Homepass ID or Site ID
-                siteId: nearestPoint?.siteId || ''
+                siteId: nearestPoint?.siteId || '',
+                prospectStatus: status === 'Covered' ? 'Covered' : 'Case Activation',
+                catatan: status === 'Covered' ? 'In Coverage area.' : 'Out of coverage - requires case activation review.'
             });
 
             // Set coverage status immediately
@@ -304,6 +311,8 @@ const Prospect = () => {
         { header: 'Product', key: 'productName', width: 25 },
         { header: 'Sales Person', key: 'salesName', width: 20 },
         { header: 'Status', key: 'status', width: 15 },
+        { header: 'Prospect Status', key: 'prospectStatus', width: 15 }, // New Field
+        { header: 'Notes/Catatan', key: 'catatan', width: 30 }, // New Field
         { header: 'Prospect Date', key: 'prospectDate', width: 15 },
         { header: 'RFS Date', key: 'rfsDate', width: 15 },
         { header: 'Photos', key: 'files', width: 50 },
@@ -432,155 +441,178 @@ const Prospect = () => {
     const [kecamatanList, setKecamatanList] = useState([]);
     const [kelurahanList, setKelurahanList] = useState([]);
     const [loadingRegions, setLoadingRegions] = useState(false);
+    const [regencyId, setRegencyId] = useState(null);
 
-    // Fetch Kecamatan when Kabupaten changes
-    useEffect(() => {
-        if (!formData.kabupaten) {
-            setKecamatanList([]);
-            return;
-        }
-
-        const fetchKecamatan = async () => {
-            setLoadingRegions(true);
-            try {
-                // Using a public API for layout administrative regions or internal if available
-                // For now, using a placeholder logic or assuming we can fetch from an external source
-                // In a real app, you might use: https://emsifa.github.io/api-wilayah-indonesia/
-                // Here we will simulate or use a proxy if needed.
-                // NOTE: Since the user asked for "National Data", we can try to use a rigorous open API.
-
-                // Let's use a proxy endpoint or direct call if allowed. 
-                // Since this runs in browser, we can call external APIs.
-                // We first need the ID of the Regency (Kabupaten).
-                // This is complex without a local database of regions.
-                // We will attempt to use a known public API: https://www.emsifa.com/api-wilayah-indonesia/
-
-                // 1. Find Regency ID
-                // We need to search by name. This might be heavy.
-                // Alternative: Just allow free text if API fails.
-
-                // Simplified approach: user types, we suggest?
-                // Or better: Let's assume we implement a helper to fetch from emsifa.
-
-                // For this implementation, I will add a helper function to fetch regions.
-            } catch (e) {
-                console.error("Failed to fetch kecamatan", e);
-            } finally {
-                setLoadingRegions(false);
-            }
-        };
-        // fetchKecamatan();
-    }, [formData.kabupaten]);
-
-    // UPDATE: We will implement a direct fetch to the external API inside the component for simplicity,
-    // or better, create a small utility.
-
-    const fetchRegencies = async (provName) => {
-        // ... existing logic handles filteredCities from clusters ...
+    // Helper: normalize name for flexible matching (remove prefix, uppercase)
+    const normalizeRegionName = (name) => {
+        if (!name) return '';
+        return name.toUpperCase()
+            .replace(/^(KABUPATEN|KOTA|KAB\.?)\s+/, '')
+            .replace(/\s+DI$/, '')
+            .trim();
     };
 
-    // Helper to fetch regions from external API (emsifa)
-    const [regencyId, setRegencyId] = useState(null);
-    const [districtId, setDistrictId] = useState(null);
+    // Helper: find best matching regency - efficient, uses full regency list
+    const findRegencyAcrossProvinces = async (kabNameInput, preferredProvId = null) => {
+        const kabNorm = normalizeRegionName(kabNameInput);
 
-    // 1. Get Regency ID when Kabupaten is selected
+        // If we have a preferred province, try it first (faster)
+        if (preferredProvId) {
+            try {
+                const regRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${preferredProvId}.json`);
+                const regs = await regRes.json();
+                const match = findBestRegency(regs, kabNorm);
+                if (match) return match;
+            } catch (e) { /* continue to fallback */ }
+        }
+
+        // Fallback: use ibnux API which has a single endpoint for ALL regencies
+        // This avoids looping all 34 provinces
+        try {
+            const allRegRes = await fetch('https://raw.githubusercontent.com/cahyadsn/wilayah/master/db/regencies.json');
+            if (allRegRes.ok) {
+                const allRegs = await allRegRes.json();
+                // This API returns { id: name } format
+                const regsArray = Object.entries(allRegs).map(([id, name]) => ({ id, name }));
+                const match = findBestRegency(regsArray, kabNorm);
+                if (match) return match;
+            }
+        } catch (e) { /* continue */ }
+
+        // Last fallback: loop emsifa provinces (slow but reliable)
+        try {
+            const provRes = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
+            const provs = await provRes.json();
+            for (const prov of provs) {
+                if (prov.id === preferredProvId) continue;
+                const regRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${prov.id}.json`);
+                const regs = await regRes.json();
+                const match = findBestRegency(regs, kabNorm);
+                if (match) return match;
+            }
+        } catch (e) { /* give up */ }
+
+        return null;
+    };
+
+    const findBestRegency = (regs, kabNorm) => {
+        const candidates = regs.filter(r => {
+            const rNorm = normalizeRegionName(r.name);
+            return rNorm === kabNorm ||
+                rNorm.includes(kabNorm) ||
+                kabNorm.includes(rNorm);
+        });
+
+        if (!candidates.length) return null;
+
+        return candidates.sort((a, b) => {
+            const aNorm = normalizeRegionName(a.name);
+            const bNorm = normalizeRegionName(b.name);
+            // Prefer exact normalized match
+            if (aNorm === kabNorm && bNorm !== kabNorm) return -1;
+            if (bNorm === kabNorm && aNorm !== kabNorm) return 1;
+            // Prefer shorter (less extra words)
+            return aNorm.length - bNorm.length;
+        })[0];
+    };
+
+    // 1. Get Kecamatan list when Kabupaten changes
     useEffect(() => {
         if (!formData.kabupaten) {
             setKecamatanList([]);
             setKelurahanList([]);
+            setRegencyId(null);
             return;
         }
 
-        const getRegencyId = async () => {
+        let cancelled = false;
+        const fetchKecamatan = async () => {
             setLoadingRegions(true);
             try {
-                // Step A: Get Provinces
-                const provRes = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
-                const provs = await provRes.json();
+                // Try to find province ID from selected province name
+                let preferredProvId = null;
+                if (formData.province) {
+                    const provRes = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
+                    const provs = await provRes.json();
+                    const provNorm = normalizeRegionName(formData.province);
+                    const matchedProv = provs.find(p => {
+                        const pNorm = normalizeRegionName(p.name);
+                        return pNorm === provNorm ||
+                            pNorm.includes(provNorm) ||
+                            provNorm.includes(pNorm);
+                    });
+                    if (matchedProv) preferredProvId = matchedProv.id;
+                }
 
-                // Flexible Province Matching
-                const provNameInput = formData.province.toUpperCase();
-                const prov = provs.find(p =>
-                    p.name === provNameInput ||
-                    p.name.includes(provNameInput) ||
-                    provNameInput.includes(p.name)
-                );
+                // Find regency (with or without province)
+                const matchedReg = await findRegencyAcrossProvinces(formData.kabupaten, preferredProvId);
 
-                if (prov) {
-                    // Step B: Get Regencies
-                    const regRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${prov.id}.json`);
-                    const regs = await regRes.json();
-
-                    const kabNameInput = formData.kabupaten.toUpperCase();
-
-                    // Specific matching logic to handle "KOTA TANGERANG" vs "TANGERANG SELATAN"
-                    const matchedReg = regs
-                        .filter(r => {
-                            const rName = r.name.toUpperCase();
-                            // Check if API name contains Input (e.g. "KOTA TANGERANG SELATAN" contains "TANGERANG SELATAN")
-                            // OR Input contains API name (e.g. "DKI JAKARTA" contains "JAKARTA" - rare for regency but possible)
-                            return rName.includes(kabNameInput) || kabNameInput.includes(rName);
-                        })
-                        .sort((a, b) => {
-                            const aName = a.name.toUpperCase();
-                            const bName = b.name.toUpperCase();
-
-                            // 1. Prefer Exact Match (ignoring KOTA/KABUPATEN prefix)
-                            const cleanA = aName.replace(/^(KABUPATEN|KOTA)\s+/, '');
-                            const cleanB = bName.replace(/^(KABUPATEN|KOTA)\s+/, '');
-                            const cleanInput = kabNameInput.replace(/^(KABUPATEN|KOTA)\s+/, '');
-
-                            if (cleanA === cleanInput) return -1;
-                            if (cleanB === cleanInput) return 1;
-
-                            // 2. Prefer name that CONTAINS the input (more specific)
-                            const aHasInput = aName.includes(kabNameInput);
-                            const bHasInput = bName.includes(kabNameInput);
-
-                            if (aHasInput && !bHasInput) return -1;
-                            if (!aHasInput && bHasInput) return 1;
-
-                            // 3. Prefer shorter length? (for "TANGERANG" -> "KOTA TANGERANG" vs "KABUPATEN TANGERANG")
-                            // Usually "KOTA" is what we want if available? or simply length diff.
-                            return aName.length - bName.length;
-                        })[0];
-
-                    if (matchedReg) {
-                        setRegencyId(matchedReg.id);
-                        // Step C: Get Districts (Kecamatan)
-                        const distRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${matchedReg.id}.json`);
-                        const dists = await distRes.json();
-                        setKecamatanList(dists);
-                    } else {
-                        console.warn('No matching regency found for:', formData.kabupaten);
-                        setKecamatanList([]);
-                    }
+                if (matchedReg && !cancelled) {
+                    setRegencyId(matchedReg.id);
+                    const distRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${matchedReg.id}.json`);
+                    const dists = await distRes.json();
+                    if (!cancelled) setKecamatanList(dists);
+                } else if (!cancelled) {
+                    console.warn('No matching regency found for:', formData.kabupaten);
+                    setKecamatanList([]);
+                    setRegencyId(null);
                 }
             } catch (e) {
-                console.warn("External region API failed", e);
+                if (!cancelled) {
+                    console.warn('Region API error:', e);
+                    setKecamatanList([]);
+                }
             } finally {
-                setLoadingRegions(false);
+                if (!cancelled) setLoadingRegions(false);
             }
         };
 
-        getRegencyId();
+        fetchKecamatan();
+        return () => { cancelled = true; };
     }, [formData.kabupaten, formData.province]);
 
     // 2. Get Villages (Kelurahan) when Kecamatan is selected
     useEffect(() => {
-        if (!formData.kecamatan || !regencyId) return;
+        if (!formData.kecamatan) {
+            setKelurahanList([]);
+            return;
+        }
 
-        const getVillages = async () => {
-            // Find district ID from list
-            const dist = kecamatanList.find(d => d.name === formData.kecamatan);
+        // If we have the list already, find and load villages
+        if (kecamatanList.length > 0) {
+            const kecNorm = normalizeRegionName(formData.kecamatan);
+            const dist = kecamatanList.find(d => {
+                const dNorm = normalizeRegionName(d.name);
+                return dNorm === kecNorm || d.name.toUpperCase() === formData.kecamatan.toUpperCase();
+            });
+
             if (dist) {
-                const vilRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${dist.id}.json`);
-                const vils = await vilRes.json();
-                setKelurahanList(vils);
+                fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${dist.id}.json`)
+                    .then(r => r.json())
+                    .then(vils => setKelurahanList(vils))
+                    .catch(e => console.warn('Village API error:', e));
             }
-        };
-        getVillages();
-    }, [formData.kecamatan, regencyId, kecamatanList]);
+        } else if (regencyId) {
+            // kecamatanList might not be loaded yet if editing existing record
+            // fetch kecamatan list first, then find the district
+            fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${regencyId}.json`)
+                .then(r => r.json())
+                .then(dists => {
+                    setKecamatanList(dists);
+                    const kecNorm = normalizeRegionName(formData.kecamatan);
+                    const dist = dists.find(d => {
+                        const dNorm = normalizeRegionName(d.name);
+                        return dNorm === kecNorm || d.name.toUpperCase() === formData.kecamatan.toUpperCase();
+                    });
+                    if (dist) {
+                        return fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${dist.id}.json`);
+                    }
+                })
+                .then(r => r && r.json())
+                .then(vils => vils && setKelurahanList(vils))
+                .catch(e => console.warn('Village fallback API error:', e));
+        }
+    }, [formData.kecamatan, regencyId]);
 
     const fetchAuxData = async () => {
         try {
@@ -631,7 +663,31 @@ const Prospect = () => {
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-200px)]">
+            {/* Tabs for Filtering Prospect Status */}
+            <div className="flex border-b border-gray-200">
+                <button
+                    onClick={() => setActiveTab('Covered')}
+                    className={cn(
+                        "px-6 py-3 text-sm font-semibold transition-all relative",
+                        activeTab === 'Covered' ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
+                    )}
+                >
+                    Covered
+                    {activeTab === 'Covered' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />}
+                </button>
+                <button
+                    onClick={() => setActiveTab('Case Activation')}
+                    className={cn(
+                        "px-6 py-3 text-sm font-semibold transition-all relative",
+                        activeTab === 'Case Activation' ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
+                    )}
+                >
+                    Case Activation
+                    {activeTab === 'Case Activation' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />}
+                </button>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-250px)]">
                 {!isLoading ? (
                     <div className="overflow-auto flex-1">
                         <table className="w-full text-left border-collapse min-w-[2000px]">
@@ -646,10 +702,11 @@ const Prospect = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {customers.filter(c =>
-                                    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                    (c.customerId || '').toLowerCase().includes(searchTerm.toLowerCase())
-                                ).map((customer) => (
+                                {customers.filter(c => {
+                                    const matchesSearch = (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (c.customerId || '').toLowerCase().includes(searchTerm.toLowerCase());
+                                    const matchesTab = c.prospectStatus === activeTab;
+                                    return matchesSearch && matchesTab;
+                                }).map((customer) => (
                                     <tr key={customer.id} className="hover:bg-blue-50/30 transition-colors group text-sm text-gray-700">
                                         {FIELD_MAP.map(field => {
                                             const val = customer[field.key];
@@ -667,6 +724,17 @@ const Prospect = () => {
                                                         {val || 'Prospect'}
                                                     </span>
                                                 );
+                                            } else if (field.key === 'prospectStatus') {
+                                                content = (
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded text-[10px] font-bold",
+                                                        val === 'Covered' ? "bg-green-50 text-green-600 border border-green-100" : "bg-orange-50 text-orange-600 border border-orange-100"
+                                                    )}>
+                                                        {val}
+                                                    </span>
+                                                );
+                                            } else if (field.key === 'catatan') {
+                                                content = <div className="max-w-[300px] truncate" title={val}>{val || '-'}</div>;
                                             } else if (field.key === 'files') {
                                                 content = (Array.isArray(val) && val.length > 0) ?
                                                     <span className="text-xs text-blue-600 flex items-center gap-1"><FileText className="w-3 h-3" /> {val.length} Files</span> :
@@ -824,7 +892,7 @@ const Prospect = () => {
                                 <Select
                                     options={filteredCities.map(c => ({ value: c.name, label: c.name }))}
                                     value={formData.kabupaten}
-                                    onChange={e => setFormData({ ...formData, kabupaten: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, kabupaten: e.target.value, kecamatan: '', kelurahan: '' })}
                                     disabled={!formData.province}
                                 />
                             </div>
@@ -836,20 +904,34 @@ const Prospect = () => {
                                 </label>
                                 <Select
                                     label=""
-                                    options={[{ value: '', label: loadingRegions ? 'Loading...' : '- Select -' }, ...kecamatanList.map(k => ({ value: k.name, label: k.name }))]}
+                                    options={[
+                                        { value: '', label: loadingRegions ? 'Loading...' : '- Select -' },
+                                        // Include saved value as option if not already in list (edit mode)
+                                        ...(formData.kecamatan && !kecamatanList.some(k => k.name.toUpperCase() === formData.kecamatan.toUpperCase())
+                                            ? [{ value: formData.kecamatan, label: formData.kecamatan + (loadingRegions ? ' (loading...)' : '') }]
+                                            : []),
+                                        ...kecamatanList.map(k => ({ value: k.name, label: k.name }))
+                                    ]}
                                     value={formData.kecamatan}
                                     onChange={e => setFormData({ ...formData, kecamatan: e.target.value, kelurahan: '' })}
-                                    disabled={loadingRegions || !kecamatanList.length}
+                                    disabled={loadingRegions && !formData.kecamatan}
                                 />
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Kelurahan</label>
                                 <Select
                                     label=""
-                                    options={[{ value: '', label: '- Select -' }, ...kelurahanList.map(k => ({ value: k.name, label: k.name }))]}
+                                    options={[
+                                        { value: '', label: '- Select -' },
+                                        // Include saved value as option if not already in list (edit mode)
+                                        ...(formData.kelurahan && !kelurahanList.some(k => k.name.toUpperCase() === formData.kelurahan.toUpperCase())
+                                            ? [{ value: formData.kelurahan, label: formData.kelurahan }]
+                                            : []),
+                                        ...kelurahanList.map(k => ({ value: k.name, label: k.name }))
+                                    ]}
                                     value={formData.kelurahan}
                                     onChange={e => setFormData({ ...formData, kelurahan: e.target.value })}
-                                    disabled={!kelurahanList.length}
+                                    disabled={false}
                                 />
                             </div>
                         </div>
@@ -884,6 +966,22 @@ const Prospect = () => {
                                 options={[{ value: 'Prospect', label: 'High Potential' }, { value: 'Active', label: 'Active Subscriber' }, { value: 'Churned', label: 'Churned' }]}
                                 value={formData.status}
                                 onChange={e => setFormData({ ...formData, status: e.target.value })}
+                            />
+                            <Select
+                                label="Prospect Status"
+                                options={[{ value: 'Covered', label: '✅ Covered' }, { value: 'Case Activation', label: '⚠️ Case Activation' }]}
+                                value={formData.prospectStatus || 'Covered'}
+                                onChange={e => setFormData({ ...formData, prospectStatus: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600">Catatan / Notes</label>
+                            <textarea
+                                className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                rows={3}
+                                value={formData.catatan || ''}
+                                onChange={e => setFormData({ ...formData, catatan: e.target.value })}
+                                placeholder="Tambah catatan di sini..."
                             />
                         </div>
                     </div>
