@@ -127,6 +127,7 @@ app.get('/api/setup-schema', async (req, res) => {
             ['address', "TEXT"],
             ['type', "VARCHAR(50)"],
             ['area', "VARCHAR(100)"],
+            ['province', "VARCHAR(100)"],
             ['kabupaten', "VARCHAR(100)"],
             ['kecamatan', "VARCHAR(100)"],
             ['kelurahan', "VARCHAR(100)"],
@@ -137,7 +138,7 @@ app.get('/api/setup-schema', async (req, res) => {
             ['product_id', "INTEGER"],
             ['product_name', "VARCHAR(255)"],
             ['rfs_date', "DATE"],
-            ['files', "JSONB DEFAULT '[]'"],
+            ['files', "TEXT DEFAULT '[]'"],
             ['sales_id', "INTEGER"],
             ['sales_name', "VARCHAR(100)"],
             ['status', "VARCHAR(50) DEFAULT 'Prospect'"],
@@ -1351,6 +1352,7 @@ app.get('/api/customers', async (req, res) => {
             name: row.name,
             address: row.address,
             area: row.area,
+            province: row.province,
             kabupaten: row.kabupaten,
             kecamatan: row.kecamatan,
             kelurahan: row.kelurahan,
@@ -1361,7 +1363,7 @@ app.get('/api/customers', async (req, res) => {
             productId: row.product_id,
             productName: row.product_name,
             rfsDate: row.rfs_date,
-            files: row.files ? (typeof row.files === 'string' ? JSON.parse(row.files) : row.files) : [],
+            files: row.files ? (typeof row.files === 'string' ? (() => { try { return JSON.parse(row.files); } catch { return []; } })() : row.files) : [],
             salesId: row.sales_id,
             salesName: row.sales_name,
             status: row.status,
@@ -1382,7 +1384,6 @@ app.get('/api/customers', async (req, res) => {
 app.post('/api/customers', async (req, res) => {
     try {
         const item = req.body;
-        // Generate a simple Customer ID if not provided (e.g., CUST-TIMESTAMP)
         const customerId = item.customerId || `CUST-${Date.now()}`;
 
         // Sanitize date fields - PostgreSQL DATE cannot accept empty string
@@ -1391,15 +1392,16 @@ app.post('/api/customers', async (req, res) => {
 
         const query = `
             INSERT INTO customers (
-                customer_id, type, name, address, area, kabupaten, kecamatan, kelurahan,
+                customer_id, type, name, address, area, province, kabupaten, kecamatan, kelurahan,
                 latitude, longitude, phone, email, product_id, product_name, rfs_date,
                 files, sales_id, sales_name, status, prospect_date, is_active, fat, homepass_id, site_id, catatan, prospect_status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
             RETURNING id
         `;
 
         const values = [
-            customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+            customerId, item.type, item.name, item.address, item.area, item.province || null,
+            item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude || null, item.longitude || null, item.phone, item.email, item.productId, item.productName, rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId || null, item.salesName, item.status || 'Prospect', prospectDate,
             item.isActive !== false, item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered'
@@ -1410,7 +1412,7 @@ app.post('/api/customers', async (req, res) => {
     } catch (err) {
         console.error('[POST /api/customers] Error:', err.message);
         console.error('[POST /api/customers] Stack:', err.stack);
-        console.error('[POST /api/customers] Request body:', req.body);
+        console.error('[POST /api/customers] Request body keys:', Object.keys(req.body || {}));
         res.status(500).json({ error: err.message });
     }
 });
@@ -1426,15 +1428,16 @@ app.put('/api/customers/:id', async (req, res) => {
 
         const query = `
             UPDATE customers SET
-                customer_id=$1, type=$2, name=$3, address=$4, area=$5, kabupaten=$6, kecamatan=$7, kelurahan=$8,
-                latitude=$9, longitude=$10, phone=$11, email=$12, product_id=$13, product_name=$14, rfs_date=$15,
-                files=$16, sales_id=$17, sales_name=$18, status=$19, prospect_date=$20, is_active=$21, fat=$22, homepass_id=$23, site_id=$24,
-                catatan=$25, prospect_status=$26
-            WHERE id = $27
+                customer_id=$1, type=$2, name=$3, address=$4, area=$5, province=$6, kabupaten=$7, kecamatan=$8, kelurahan=$9,
+                latitude=$10, longitude=$11, phone=$12, email=$13, product_id=$14, product_name=$15, rfs_date=$16,
+                files=$17, sales_id=$18, sales_name=$19, status=$20, prospect_date=$21, is_active=$22, fat=$23, homepass_id=$24, site_id=$25,
+                catatan=$26, prospect_status=$27, updated_at=NOW()
+            WHERE id = $28
         `;
 
         const values = [
-            item.customerId, item.type, item.name, item.address, item.area, item.kabupaten, item.kecamatan, item.kelurahan,
+            item.customerId, item.type, item.name, item.address, item.area, item.province || null,
+            item.kabupaten, item.kecamatan, item.kelurahan,
             item.latitude || null, item.longitude || null, item.phone, item.email, item.productId, item.productName, rfsDate,
             item.files ? JSON.stringify(item.files) : '[]', item.salesId || null, item.salesName, item.status, prospectDate,
             item.isActive !== false, item.fat, item.homepassId, item.siteId, item.catatan, item.prospectStatus || 'Covered',
@@ -1444,7 +1447,7 @@ app.put('/api/customers/:id', async (req, res) => {
         await db.query(query, values);
         res.json({ message: 'Customer updated' });
     } catch (err) {
-        console.error(err);
+        console.error('[PUT /api/customers] Error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
