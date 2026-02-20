@@ -295,6 +295,13 @@ const CoverageManagement = () => {
         }
     }, [typeFilter]); // Reload when filter changes
 
+    // Ensure data is fetched when view is 'table' (including initial load)
+    useEffect(() => {
+        if (activeView === 'table') {
+            fetchData(currentPage, searchTerm, 'table');
+        }
+    }, [fetchData, currentPage, searchTerm, activeView]);
+
     // FETCH MAP DATA (BBOX)
     useEffect(() => {
         if (activeView === 'map' && debouncedBounds) {
