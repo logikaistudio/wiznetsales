@@ -305,7 +305,25 @@ ensureServiceTypeColumn();
 // ROLES MANAGEMENT
 // ==========================================
 
-// Auto-create roles table if not exists
+// All available menus / permission keys
+const ALL_MENU_KEYS = [
+    'dashboard', 'achievement', 'prospect_subscriber', 'coverage', 'omniflow',
+    'person_incharge', 'targets', 'coverage_management',
+    'product_management', 'promo', 'hot_news', 'user_management', 'application_settings'
+];
+
+// Create full permissions object (all menus, all actions)
+const makeFullPermissions = (allowedMenus = ALL_MENU_KEYS) => {
+    const perms = {};
+    ALL_MENU_KEYS.forEach(m => {
+        perms[m] = allowedMenus.includes(m)
+            ? { view: true, create: true, edit: true, delete: true, import: true, export: true }
+            : { view: false, create: false, edit: false, delete: false, import: false, export: false };
+    });
+    return perms;
+};
+
+// Auto-create and migrate roles table
 const ensureRolesTable = async () => {
     try {
         await db.query(`
@@ -313,25 +331,88 @@ const ensureRolesTable = async () => {
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) NOT NULL UNIQUE,
                 description TEXT,
-                permissions JSONB DEFAULT '[]',
+                permissions JSONB DEFAULT '{}',
+                data_scope VARCHAR(50) DEFAULT 'all',
+                allowed_clusters JSONB DEFAULT '[]',
+                allowed_provinces JSONB DEFAULT '[]',
+                is_active BOOLEAN DEFAULT true,
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
 
+        // Add missing columns if table already exists (safe migration)
+        const alterCols = [
+            `ALTER TABLE roles ADD COLUMN IF NOT EXISTS data_scope VARCHAR(50) DEFAULT 'all'`,
+            `ALTER TABLE roles ADD COLUMN IF NOT EXISTS allowed_clusters JSONB DEFAULT '[]'`,
+            `ALTER TABLE roles ADD COLUMN IF NOT EXISTS allowed_provinces JSONB DEFAULT '[]'`,
+            `ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`
+        ];
+        for (const sql of alterCols) {
+            try { await db.query(sql); } catch (e) { /* column may already exist */ }
+        }
+
         // Insert default roles if empty
         const countResult = await db.query('SELECT COUNT(*) FROM roles');
         if (parseInt(countResult.rows[0].count) === 0) {
-            await db.query(`
-                INSERT INTO roles (name, description, permissions) VALUES
-                ('Admin', 'Full system access', '["all"]'),
-                ('Sales', 'Sales and prospect management', '["prospects", "customers", "coverage"]'),
-                ('Manager', 'View reports and manage team', '["reports", "prospects", "customers"]')
-                ON CONFLICT (name) DO NOTHING
-            `);
-            console.log('Default roles created');
+            const defaultRoles = [
+                { name: 'super_admin', description: 'Super Administrator - Full Access', perms: makeFullPermissions() },
+                { name: 'admin', description: 'Administrator - Full Access', perms: makeFullPermissions() },
+                { name: 'leader', description: 'Team Leader', perms: makeFullPermissions(['dashboard', 'achievement', 'prospect_subscriber', 'coverage', 'omniflow', 'person_incharge', 'targets', 'coverage_management', 'product_management', 'promo', 'hot_news']) },
+                { name: 'manager', description: 'Manager', perms: makeFullPermissions(['dashboard', 'achievement', 'prospect_subscriber', 'coverage', 'omniflow', 'person_incharge', 'targets', 'product_management', 'promo', 'hot_news']) },
+                { name: 'sales', description: 'Sales Staff', perms: makeFullPermissions(['dashboard', 'achievement', 'prospect_subscriber', 'coverage']) },
+                { name: 'user', description: 'Basic User', perms: makeFullPermissions(['dashboard', 'achievement']) }
+            ];
+            for (const r of defaultRoles) {
+                await db.query(
+                    `INSERT INTO roles (name, description, permissions, data_scope, is_active) VALUES ($1, $2, $3, 'all', true) ON CONFLICT (name) DO NOTHING`,
+                    [r.name, r.description, JSON.stringify(r.perms)]
+                );
+            }
+            console.log('Default roles created with proper object permissions');
+        } else {
+            // MIGRATE: Update any role that has OLD array-format permissions to new object-format
+            // Also ensure coverage_management exists in all non-restricted roles
+            const rolesResult = await db.query('SELECT id, name, permissions FROM roles');
+            for (const role of rolesResult.rows) {
+                let perms = role.permissions;
+                let needsUpdate = false;
+
+                // Detect old array format (e.g., ["all"] or ["prospects", ...])  
+                if (Array.isArray(perms)) {
+                    // Old array format — upgrade to full object format
+                    const isFullAccess = perms.includes('all') ||
+                        role.name.toLowerCase() === 'admin' ||
+                        role.name.toLowerCase() === 'super_admin';
+                    perms = isFullAccess
+                        ? makeFullPermissions()
+                        : makeFullPermissions(['dashboard', 'achievement', 'prospect_subscriber', 'coverage']);
+                    needsUpdate = true;
+                    console.log(`[RoleMigration] Migrated role "${role.name}" from array to object permissions`);
+                }
+                // Detect object format but missing coverage_management key
+                else if (perms && typeof perms === 'object' && !Array.isArray(perms)) {
+                    // Ensure all menu keys exist, add missing ones
+                    ALL_MENU_KEYS.forEach(menuKey => {
+                        if (!(menuKey in perms)) {
+                            // For non-admin roles, default new menus to false
+                            const isAdmin = role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'super_admin';
+                            perms[menuKey] = isAdmin
+                                ? { view: true, create: true, edit: true, delete: true, import: true, export: true }
+                                : { view: false, create: false, edit: false, delete: false, import: false, export: false };
+                            needsUpdate = true;
+                            console.log(`[RoleMigration] Added missing menu key "${menuKey}" to role "${role.name}"`);
+                        }
+                    });
+                }
+
+                if (needsUpdate) {
+                    await db.query('UPDATE roles SET permissions = $1, updated_at = NOW() WHERE id = $2',
+                        [JSON.stringify(perms), role.id]);
+                }
+            }
         }
-        console.log('Ensured roles table exists');
+        console.log('Ensured roles table exists with proper permissions format');
     } catch (err) {
         console.error('Roles table migration error:', err);
     }

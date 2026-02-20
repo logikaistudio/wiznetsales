@@ -112,10 +112,17 @@ export const AuthProvider = ({ children }) => {
             });
             const data = await res.json();
             if (data.success) {
-                setUser(data.user);
-                // We do NOT save to localStorage to ensure logout on refresh
-                // localStorage.setItem('user', JSON.stringify(data.user));
-                // localStorage.setItem('lastActive', Date.now().toString());
+                // Parse role_permissions jika masih berupa JSON string (dari PostgreSQL)
+                const userData = { ...data.user };
+                if (userData.role_permissions && typeof userData.role_permissions === 'string') {
+                    try {
+                        userData.role_permissions = JSON.parse(userData.role_permissions);
+                    } catch (e) {
+                        console.error('Failed to parse role_permissions:', e);
+                        userData.role_permissions = null;
+                    }
+                }
+                setUser(userData);
                 return { success: true };
             } else {
                 return { success: false, error: data.error };
@@ -133,8 +140,14 @@ export const AuthProvider = ({ children }) => {
         // Super Admin & Admin always have full access
         if (roleName === 'super_admin' || roleName === 'admin') return true;
 
+        // Parse role_permissions jika masih berupa string (safety guard)
+        let perms = user.role_permissions;
+        if (perms && typeof perms === 'string') {
+            try { perms = JSON.parse(perms); } catch (e) { perms = null; }
+        }
+
         // If no dynamic permissions found, fallback to basic role check (backward compatibility)
-        if (!user.role_permissions) {
+        if (!perms) {
             if (roleName === 'leader' || roleName === 'manager') return true; // Temporary fallback for legacy roles
             if (roleName === 'sales') {
                 const allowed = ['dashboard:view', 'achievement:view', 'prospect_subscriber:view', 'coverage:view', 'prospect_subscriber:create', 'prospect_subscriber:edit'];
@@ -147,13 +160,13 @@ export const AuthProvider = ({ children }) => {
         const [menuId, action] = permissionString.split(':');
 
         // Check if menu exists in permissions
-        if (!user.role_permissions[menuId]) return false;
+        if (!perms[menuId]) return false;
 
         // Check specific action (e.g. view, create, edit)
         // If action is not specified, check if ANY permission exists for this menu
         if (!action) return true;
 
-        return !!user.role_permissions[menuId][action];
+        return !!perms[menuId][action];
     };
 
     const canAccessRoute = (path) => {
