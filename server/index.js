@@ -605,9 +605,9 @@ app.get('/api/coverage', async (req, res) => {
             }),
             pagination: {
                 page,
-                limit: (showAll || isMapRequest) ? totalRows : limit,
+                limit: (showAll || isBboxRequest || isMapPage) ? totalRows : limit,
                 totalRows,
-                totalPages: (showAll || isMapRequest) ? 1 : Math.ceil(totalRows / limit)
+                totalPages: (showAll || isBboxRequest || isMapPage) ? 1 : Math.ceil(totalRows / limit)
             }
         });
     } catch (err) {
