@@ -199,6 +199,9 @@ const CoverageManagement = () => {
     const debouncedBounds = useDebounce(mapBounds, 300);
     const [visibleCount, setVisibleCount] = useState(0);
 
+    // Stable callback for MapBoundsHandler (must be at component level, not inside JSX)
+    const handleBoundsChange = useCallback((b) => setMapBounds(b), []);
+
     const handleSelectAll = (e) => {
         if (e.target.checked) {
             setSelectedIds(coverageData.map(item => item.id));
@@ -1061,7 +1064,7 @@ const CoverageManagement = () => {
                     <div className="h-[500px] relative">
                         <MapContainer center={mapCenter} zoom={12} className="h-full w-full z-0" scrollWheelZoom={true}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                            <MapBoundsHandler onBoundsChange={useCallback((b) => setMapBounds(b), [])} />
+                            <MapBoundsHandler onBoundsChange={handleBoundsChange} />
 
                             {/* Coverage Layer (Handles circles, polygons and markers) */}
                             {showRadius && (
