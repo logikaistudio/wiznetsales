@@ -624,8 +624,7 @@ const Prospect = () => {
         }
     };
 
-    const { user } = useAuth();
-    const canManageData = user && (user.role === 'admin' || user.role === 'leader' || user.role === 'manager');
+    const { user, hasPermission } = useAuth();
 
     // ... (rest of component render)
 
@@ -638,13 +637,17 @@ const Prospect = () => {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                     <div className="flex gap-2 flex-wrap items-center">
-                        <Button variant="outline" onClick={handleExport} className="h-9 text-xs">
-                            <Download className="w-4 h-4 mr-2" /> Export
-                        </Button>
+                        {hasPermission('prospect_subscriber:export') && (
+                            <Button variant="outline" onClick={handleExport} className="h-9 text-xs">
+                                <Download className="w-4 h-4 mr-2" /> Export
+                            </Button>
+                        )}
                         <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
-                        <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="h-9 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100">
-                            <Upload className="w-4 h-4 mr-2" /> Import
-                        </Button>
+                        {hasPermission('prospect_subscriber:import') && (
+                            <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="h-9 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100">
+                                <Upload className="w-4 h-4 mr-2" /> Import
+                            </Button>
+                        )}
                         <div className="w-px h-6 bg-gray-300 mx-2"></div>
                         <div className="relative">
                             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -656,9 +659,11 @@ const Prospect = () => {
                                 className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm w-48 lg:w-64 shadow-sm"
                             />
                         </div>
-                        <Button onClick={() => handleOpenModal()} className="shadow-blue-500/20 shadow-lg">
-                            <Plus className="w-4 h-4 mr-2" /> Add New
-                        </Button>
+                        {hasPermission('prospect_subscriber:create') && (
+                            <Button onClick={() => handleOpenModal()} className="shadow-blue-500/20 shadow-lg">
+                                <Plus className="w-4 h-4 mr-2" /> Add New
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -754,22 +759,26 @@ const Prospect = () => {
 
                                         <td className="p-3 whitespace-nowrap text-right sticky right-0 bg-white group-hover:bg-blue-50/30 border-b border-gray-50 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                                             <div className="flex justify-end gap-2">
-                                                <Button size="icon" variant="ghost" onClick={() => handleOpenModal(customer)} className="h-8 w-8 text-blue-600 hover:bg-blue-50">
-                                                    <Edit className="w-4 h-4" />
-                                                </Button>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-8 w-8 text-red-500 hover:bg-red-50"
-                                                    onClick={async () => {
-                                                        if (confirm('Delete this customer?')) {
-                                                            await fetch(`/api/customers/${customer.id}`, { method: 'DELETE' });
-                                                            fetchData();
-                                                        }
-                                                    }}
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
+                                                {hasPermission('prospect_subscriber:edit') && (
+                                                    <Button size="icon" variant="ghost" onClick={() => handleOpenModal(customer)} className="h-8 w-8 text-blue-600 hover:bg-blue-50">
+                                                        <Edit className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                                {hasPermission('prospect_subscriber:delete') && (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 text-red-500 hover:bg-red-50"
+                                                        onClick={async () => {
+                                                            if (confirm('Delete this customer?')) {
+                                                                await fetch(`/api/customers/${customer.id}`, { method: 'DELETE' });
+                                                                fetchData();
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>

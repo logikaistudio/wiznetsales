@@ -4,6 +4,7 @@ import { Icon, divIcon } from 'leaflet';
 import { Map, Search, Layers, Plus, Upload, Trash2, Pencil, Save, FileSpreadsheet, Settings as SettingsIcon, Loader2, RefreshCw, Download } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import Button from '../../components/ui/Button';
+import { useAuth } from '../../context/AuthContext';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import * as XLSX from 'xlsx';
@@ -171,6 +172,7 @@ const CoverageLayer = ({ coverageData, settings, mapBounds, createNodeIcon, fixP
 };
 
 const CoverageManagement = () => {
+    const { hasPermission } = useAuth();
     // Data State
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('All');
@@ -941,36 +943,50 @@ const CoverageManagement = () => {
                     <p className="text-gray-500 text-sm">{totalRows.toLocaleString()} sites in database</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                    <Button variant="ghost" onClick={() => setIsSettingsOpen(true)}>
-                        <SettingsIcon className="w-4 h-4 text-gray-600" />
-                    </Button>
-                    <div className="w-px bg-gray-300 h-8 mx-1"></div>
-                    <Button variant="outline" onClick={handleDownloadSample}>
-                        <FileSpreadsheet className="w-4 h-4 mr-2" /> Sample XLS
-                    </Button>
-                    <Button variant="outline" onClick={handleExport}>
-                        <Download className="w-4 h-4 mr-2" /> Export XLS
-                    </Button>
-                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
-                    <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-                        <Upload className="w-4 h-4 mr-2" /> Import XLS
-                    </Button>
-                    <input type="file" ref={kmzFileInputRef} onChange={handleKMZFileSelect} accept=".kmz,.kml" className="hidden" />
-                    <Button variant="secondary" onClick={() => kmzFileInputRef.current?.click()}>
-                        <Map className="w-4 h-4 mr-2" /> Import KMZ
-                    </Button>
-                    {selectedIds.length > 0 ? (
-                        <Button variant="danger" onClick={handleBulkDelete}>
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete Selected ({selectedIds.length})
-                        </Button>
-                    ) : (
-                        <Button variant="danger" onClick={handleDeleteAll}>
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete All
+                    {hasPermission('coverage_management:edit') && (
+                        <Button variant="ghost" onClick={() => setIsSettingsOpen(true)}>
+                            <SettingsIcon className="w-4 h-4 text-gray-600" />
                         </Button>
                     )}
-                    <Button onClick={() => handleOpenModal()}>
-                        <Plus className="w-4 h-4 mr-2" /> Add Site
-                    </Button>
+                    <div className="w-px bg-gray-300 h-8 mx-1"></div>
+                    {hasPermission('coverage_management:import') && (
+                        <Button variant="outline" onClick={handleDownloadSample}>
+                            <FileSpreadsheet className="w-4 h-4 mr-2" /> Sample XLS
+                        </Button>
+                    )}
+                    {hasPermission('coverage_management:export') && (
+                        <Button variant="outline" onClick={handleExport}>
+                            <Download className="w-4 h-4 mr-2" /> Export XLS
+                        </Button>
+                    )}
+                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
+                    {hasPermission('coverage_management:import') && (
+                        <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+                            <Upload className="w-4 h-4 mr-2" /> Import XLS
+                        </Button>
+                    )}
+                    <input type="file" ref={kmzFileInputRef} onChange={handleKMZFileSelect} accept=".kmz,.kml" className="hidden" />
+                    {hasPermission('coverage_management:import') && (
+                        <Button variant="secondary" onClick={() => kmzFileInputRef.current?.click()}>
+                            <Map className="w-4 h-4 mr-2" /> Import KMZ
+                        </Button>
+                    )}
+                    {hasPermission('coverage_management:delete') && (
+                        selectedIds.length > 0 ? (
+                            <Button variant="danger" onClick={handleBulkDelete}>
+                                <Trash2 className="w-4 h-4 mr-2" /> Delete Selected ({selectedIds.length})
+                            </Button>
+                        ) : (
+                            <Button variant="danger" onClick={handleDeleteAll}>
+                                <Trash2 className="w-4 h-4 mr-2" /> Delete All
+                            </Button>
+                        )
+                    )}
+                    {hasPermission('coverage_management:create') && (
+                        <Button onClick={() => handleOpenModal()}>
+                            <Plus className="w-4 h-4 mr-2" /> Add Site
+                        </Button>
+                    )}
                 </div>
             </div>
 

@@ -95,24 +95,46 @@ const UserManagement = () => {
     // Filter users based on role hierarchy
     const getVisibleUsers = () => {
         if (!currentUser) return [];
-        if (currentUser.role === 'super_admin') return users;
+        const myRole = (currentUser.role || '').toLowerCase();
 
-        // Admin can see:
-        // 1. Themselves
-        // 2. Other Admins (read-only usually, but prompt says "seeing")
-        // 3. Roles below (user, staff, etc)
-        // Admin CANNOT see: super_admin
+        if (myRole === 'super_admin') return users;
 
-        return users.filter(u => u.role !== 'super_admin');
+        if (myRole === 'admin') {
+            return users.filter(u => (u.role || '').toLowerCase() !== 'super_admin');
+        }
+
+        if (myRole === 'manager') {
+            // Manager cannot see Admin or Super Admin
+            return users.filter(u => {
+                const uRole = (u.role || '').toLowerCase();
+                return uRole !== 'super_admin' && uRole !== 'admin';
+            });
+        }
+
+        // Default: Can only see themselves or limited scope (implementation choice)
+        return [];
     };
 
     // Filter roles based on hierarchy
     const getVisibleRoles = () => {
         if (!currentUser) return [];
-        if (currentUser.role === 'super_admin') return roles;
+        const myRole = (currentUser.role || '').toLowerCase();
 
-        // Admin cannot assign super_admin role
-        return roles.filter(r => r.name !== 'super_admin');
+        if (myRole === 'super_admin') return roles;
+
+        if (myRole === 'admin') {
+            return roles.filter(r => r.name.toLowerCase() !== 'super_admin');
+        }
+
+        if (myRole === 'manager') {
+            // Manager can only assign roles below them (e.g. Sales, User, Staff)
+            return roles.filter(r => {
+                const rName = r.name.toLowerCase();
+                return rName !== 'super_admin' && rName !== 'admin' && rName !== 'manager';
+            });
+        }
+
+        return [];
     };
 
     // --- USER HANDLERS ---
@@ -352,47 +374,49 @@ const UserManagement = () => {
                 </div>
             </div>
 
-            {/* SECTION 2: ROLE MANAGEMENT */}
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                            <Shield className="w-5 h-5" />
-                            Role Management
-                        </h2>
-                        <p className="text-sm text-gray-500">Define granular permissions for each role.</p>
+            {/* SECTION 2: ROLE MANAGEMENT - Only for Super Admin and Admin */}
+            {(currentUser?.role?.toLowerCase() === 'super_admin' || currentUser?.role?.toLowerCase() === 'admin') && (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                <Shield className="w-5 h-5" />
+                                Role Management
+                            </h2>
+                            <p className="text-sm text-gray-500">Define granular permissions for each role.</p>
+                        </div>
+                        <Button onClick={() => handleOpenRoleModal()}>
+                            <Plus className="w-4 h-4 mr-2" /> Add Role
+                        </Button>
                     </div>
-                    <Button onClick={() => handleOpenRoleModal()}>
-                        <Plus className="w-4 h-4 mr-2" /> Add Role
-                    </Button>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {roles.map(role => (
-                        <div key={role.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                            <div className="p-5">
-                                <div className="flex items-start justify-between mb-3">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-gray-900 capitalize">{role.name}</h3>
-                                        <p className="text-sm text-gray-500">{role.description || 'No description'}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {roles.map(role => (
+                            <div key={role.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                                <div className="p-5">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 capitalize">{role.name}</h3>
+                                            <p className="text-sm text-gray-500">{role.description || 'No description'}</p>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button onClick={() => handleOpenRoleModal(role)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => deleteRole(role.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => handleOpenRoleModal(role)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                                            <Pencil className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => deleteRole(role.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                    <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-center text-gray-500">
+                                        Click edit to view/modify detailed permissions
                                     </div>
-                                </div>
-                                <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-center text-gray-500">
-                                    Click edit to view/modify detailed permissions
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* USER MODAL */}
             <Modal isOpen={userModalOpen} onClose={() => setUserModalOpen(false)} title={editingUser ? (viewingUserPermissions ? 'User Details' : 'Edit User') : 'Add User'}>

@@ -128,14 +128,16 @@ export const AuthProvider = ({ children }) => {
     const hasPermission = (permissionString) => {
         if (!user) return false;
 
+        const roleName = (user.role || '').toLowerCase();
+
         // Super Admin & Admin always have full access
-        if (user.role === 'super_admin' || user.role === 'admin') return true;
+        if (roleName === 'super_admin' || roleName === 'admin') return true;
 
         // If no dynamic permissions found, fallback to basic role check (backward compatibility)
         if (!user.role_permissions) {
-            if (user.role === 'leader' || user.role === 'manager') return true; // Temporary fallback for legacy roles
-            if (user.role === 'sales') {
-                const allowed = ['dashboard:view', 'achievement:view', 'prospect_subscriber:view', 'coverage:view'];
+            if (roleName === 'leader' || roleName === 'manager') return true; // Temporary fallback for legacy roles
+            if (roleName === 'sales') {
+                const allowed = ['dashboard:view', 'achievement:view', 'prospect_subscriber:view', 'coverage:view', 'prospect_subscriber:create', 'prospect_subscriber:edit'];
                 return allowed.includes(permissionString);
             }
             return false;
@@ -157,8 +159,10 @@ export const AuthProvider = ({ children }) => {
     const canAccessRoute = (path) => {
         if (!user) return false;
 
+        const roleName = (user.role || '').toLowerCase();
+
         // Super Admin & Admin always have full access
-        if (user.role === 'super_admin' || user.role === 'admin') return true;
+        if (roleName === 'super_admin' || roleName === 'admin') return true;
 
         // Route to Menu ID Mapping
         const routeMap = {
